@@ -17,12 +17,14 @@ type HTTPConfig struct {
 }
 
 type DBConfig struct {
-	Port     string `env:"DB_PORT" env-default:"5432"`
-	Host     string `env:"DB_HOST" env-required:"true"`
-	User     string `env:"DB_USER" env-required:"true"`
-	Password string `env:"DB_PASSWORD" env-required:"true"`
-	Name     string `env:"DB_NAME" env-required:"true"`
-	SSLMode  string `env:"DB_SSLMODE" env-default:"disable"`
+	Port         string `env:"DB_PORT" env-default:"5432"`
+	Host         string `env:"DB_HOST" env-required:"true"`
+	User         string `env:"DB_USER" env-required:"true"`
+	Password     string `env:"DB_PASSWORD" env-required:"true"`
+	Name         string `env:"DB_NAME" env-required:"true"`
+	SSLMode      string `env:"DB_SSLMODE" env-default:"disable"`
+	PoolMaxConns int    `env:"DB_MAX_POOL_CONNS" env-default:"30"`
+	PoolMinConns int    `env:"DB_MIN_POOL_CONNS" env-default:"5"`
 }
 
 type Config struct {
@@ -33,8 +35,8 @@ type Config struct {
 
 func (c *DBConfig) GetDSN() string {
 	return fmt.Sprintf(
-		"postgres://%s:%s@%s:%s/%s?sslmode=%s",
-		c.User, c.Password, c.Host, c.Port, c.Name, c.SSLMode,
+		"postgres://%s:%s@%s:%s/%s?sslmode=%s&pool_max_conns=%d&pool_min_conns=%d",
+		c.User, c.Password, c.Host, c.Port, c.Name, c.SSLMode, c.PoolMaxConns, c.PoolMinConns,
 	)
 }
 
