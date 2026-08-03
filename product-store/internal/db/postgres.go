@@ -9,13 +9,11 @@ import (
 )
 
 func NewPostgresPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
-	cfg, err := pgxpool.ParseConfig(dsn) // почитай доку в функции, 17-18 строку можно тоже в GetDSN вынести
+	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, fmt.Errorf("parse pgxpool config: %w", err)
 	}
 
-	cfg.MaxConns = 30 // вот это тоже должно быть в конфиге
-	cfg.MinConns = 5  // вот это тоже должно быть в конфиге
 	cfg.MaxConnLifetime = time.Minute * 30
 	cfg.MaxConnIdleTime = time.Minute * 5
 
