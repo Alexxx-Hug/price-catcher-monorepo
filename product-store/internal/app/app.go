@@ -2,24 +2,28 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/signal"
 	"syscall"
 
 	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/config"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/db"
-	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/delivery"
+	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/providers"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/repository/postgres"
-	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/server"
+	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/scheduler"
+	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/server/http"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/usecase"
 
 	"go.uber.org/zap"
 )
 
 type App struct {
-	cfg    *config.Config
-	logger *zap.Logger
-	server *server.Server
+	cfg                 *config.Config
+	logger              *zap.Logger
+	server              *http.Server
+	priceCheckScheduler *scheduler.PriceCheckScheduler
+	readinessChecker    *http.ReadinessChecker
 }
 
 func NewApp(ctx context.Context, cfg *config.Config, logger *zap.Logger) (*App, func(), error) {
@@ -28,20 +32,41 @@ func NewApp(ctx context.Context, cfg *config.Config, logger *zap.Logger) (*App, 
 		return nil, nil, fmt.Errorf("connect to database: %w", err)
 	}
 
-	productRepo := postgres.NewProductRepository(pool)
-	productUseCase := usecase.NewProductUseCase(productRepo, logger)
+	kafkaProvider, err := providers.NewKafkaProvider(cfg.Kafka)
+	if err != nil {
+		pool.Close()
+		return nil, nil, fmt.Errorf("init kafka provider: %w", err)
+	}
 
-	router := delivery.NewRouter(productUseCase, logger)
-	httpServer := server.NewServer(cfg.HTTP.Port, router.GetEngine(), logger)
+	productRepo := postgres.NewProductRepository(pool)
+	productUseCase := usecase.NewProductUseCase(productRepo, logger, kafkaProvider.PriceCheckTaskProducer)
+	priceCheckScheduler := scheduler.NewPriceCheckScheduler(
+		productUseCase,
+		cfg.Monitoring.PriceCheckInterval,
+		cfg.Monitoring.PriceCheckBatchLimit,
+		logger,
+	)
+	readinessChecker := http.NewReadinessChecker(
+		pool.Ping,
+		cfg.HTTP.ReadinessCheckInterval,
+		cfg.HTTP.ReadinessCheckTimeout,
+		logger,
+	)
+
+	httpRouter := http.NewRouter(readinessChecker)
+	httpServer := http.NewServer(cfg.HTTP.Port, httpRouter.GetEngine(), logger)
 
 	cleanup := func() {
 		pool.Close()
+		_ = kafkaProvider.Close()
 	}
 
 	return &App{
-		cfg:    cfg,
-		logger: logger,
-		server: httpServer,
+		cfg:                 cfg,
+		logger:              logger,
+		server:              httpServer,
+		priceCheckScheduler: priceCheckScheduler,
+		readinessChecker:    readinessChecker,
 	}, cleanup, nil
 }
 
@@ -51,6 +76,18 @@ func (a *App) Run(ctx context.Context) error {
 		zap.String("app", a.cfg.App.Name),
 		zap.String("version", a.cfg.App.Version),
 	)
+
+	go func() {
+		if err := a.priceCheckScheduler.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			a.logger.Error("price check scheduler stopped", zap.Error(err))
+		}
+	}()
+
+	go func() {
+		if err := a.readinessChecker.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			a.logger.Error("readiness checker stopped", zap.Error(err))
+		}
+	}()
 
 	if err := a.server.Run(ctx); err != nil {
 		return fmt.Errorf("run server: %w", err)

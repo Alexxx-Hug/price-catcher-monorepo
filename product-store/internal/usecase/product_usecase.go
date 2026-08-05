@@ -4,17 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
 	apperrors "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/app_errors"
-	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/entity"
-	repository "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/repository"
+	entity "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/models"
+	eventdto "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/models/eventdto"
+	"github.com/google/uuid"
 
 	"go.uber.org/zap"
 )
 
-type ProductUseCaseInterface interface {
+type ProductDataBaseRepository interface {
 	// tg-bot: сохраняет товар после парсинга WB, когда пользователь добавляет ссылку.
 	// monitor: обновляет товар, размеры, цены и остатки после очередной проверки WB.
-	UpsertProductWithSizes(ctx context.Context, request UpsertProductInput) (*entity.Product, error)
+	UpsertProductWithSizes(ctx context.Context, product *entity.Product) (*entity.Product, error)
 
 	// tg-bot: проверяет, есть ли товар уже в базе, когда пользователь прислал WB-ссылку.
 	GetProductByNmID(ctx context.Context, nmID int64) (*entity.Product, error)
@@ -23,22 +26,28 @@ type ProductUseCaseInterface interface {
 	GetProductSizeByOptionID(ctx context.Context, optionID int64) (*entity.ProductSize, error)
 
 	// monitor: получает список товаров, которые нужно периодически проверять в WB.
-	ListProductsForMonitoring(ctx context.Context) ([]entity.Product, error)
+	ListProductsForMonitoring(ctx context.Context, limit int) ([]entity.Product, error)
+}
+
+type PriceCheckTaskProducer interface {
+	SendPriceCheckTask(ctx context.Context, event eventdto.TaskCheckPricesEvent) error
 }
 
 type productUseCase struct {
-	repo   repository.ProductRepository
-	logger *zap.Logger
+	repo                   ProductDataBaseRepository
+	logger                 *zap.Logger
+	priceCheckTaskProducer PriceCheckTaskProducer
 }
 
-func NewProductUseCase(repo repository.ProductRepository, logger *zap.Logger) *productUseCase {
+func NewProductUseCase(repo ProductDataBaseRepository, logger *zap.Logger, priceCheckTaskProducer PriceCheckTaskProducer) *productUseCase {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
 
 	return &productUseCase{
-		repo:   repo,
-		logger: logger,
+		repo:                   repo,
+		logger:                 logger,
+		priceCheckTaskProducer: priceCheckTaskProducer,
 	}
 }
 
@@ -140,8 +149,12 @@ func (u *productUseCase) GetProductSizeByOptionID(ctx context.Context, optionID 
 	return productSize, nil
 }
 
-func (u *productUseCase) ListProductsForMonitoring(ctx context.Context) ([]entity.Product, error) {
-	products, err := u.repo.ListProductsForMonitoring(ctx)
+func (u *productUseCase) ListProductsForMonitoring(ctx context.Context, limit int) ([]entity.Product, error) {
+	if limit <= 0 {
+		limit = 5
+	}
+
+	products, err := u.repo.ListProductsForMonitoring(ctx, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get list of products: %w", err)
 	}
@@ -151,4 +164,32 @@ func (u *productUseCase) ListProductsForMonitoring(ctx context.Context) ([]entit
 	}
 
 	return products, nil
+}
+
+func (u *productUseCase) PublishPriceCheckTasks(ctx context.Context, limit int) error {
+	products, err := u.repo.ListProductsForMonitoring(ctx, limit)
+	if err != nil {
+		return fmt.Errorf("failed to get product list: %w", err)
+	}
+
+	for _, product := range products {
+		for _, size := range product.Sizes {
+			event := eventdto.TaskCheckPricesEvent{
+				TaskID:        uuid.NewString(),
+				ProductID:     product.ID,
+				ProductSizeID: size.ID,
+				NmID:          product.NmID,
+				OptionID:      size.OptionID,
+				URL:           product.URL,
+				PriceMinor:    size.PriceMinor,
+				RequestedAt:   time.Now(),
+			}
+			err := u.priceCheckTaskProducer.SendPriceCheckTask(ctx, event)
+			if err != nil {
+				return fmt.Errorf("failed to send event: %w", err)
+			}
+		}
+	}
+
+	return nil
 }

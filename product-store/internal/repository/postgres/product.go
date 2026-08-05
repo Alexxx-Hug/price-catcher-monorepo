@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	apperrors "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/app_errors"
-	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/entity"
-	repo "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/repository"
+	entity "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/models"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -199,9 +199,22 @@ func (r *productRepository) GetProductSizeByOptionID(ctx context.Context, option
 
 }
 
-func (r *productRepository) ListProductsForMonitoring(ctx context.Context) ([]entity.Product, error) {
+func (r *productRepository) ListProductsForMonitoring(ctx context.Context, limit int) ([]entity.Product, error) {
+	if limit <= 0 {
+		limit = 5
+	}
+
 	const query = `
-		SELECT DISTINCT
+		WITH sizes_to_check AS (
+			SELECT
+				ps.id
+			FROM shop.product_sizes ps
+			JOIN shop.subscriptions s ON s.product_size_id = ps.id
+			GROUP BY ps.id
+			ORDER BY MIN(ps.updated_at) ASC
+			LIMIT $1
+		)
+		SELECT
 			p.id,
 			p.nm_id,
 			p.name,
@@ -218,13 +231,13 @@ func (r *productRepository) ListProductsForMonitoring(ctx context.Context) ([]en
 			ps.quantity,
 			ps.in_stock,
 			ps.updated_at
-		FROM shop.products p
-		JOIN shop.product_sizes ps ON ps.product_id = p.id
-		JOIN shop.subscriptions s ON s.product_size_id = ps.id
-		ORDER BY p.id, ps.id
+		FROM sizes_to_check stc
+		JOIN shop.product_sizes ps ON ps.id = stc.id
+		JOIN shop.products p ON p.id = ps.product_id
+		ORDER BY ps.updated_at ASC, ps.id
 	`
 
-	rows, err := r.db.Query(ctx, query)
+	rows, err := r.db.Query(ctx, query, limit)
 	if err != nil {
 		return nil, fmt.Errorf("query products for monitoring: %w", err)
 	}
@@ -281,5 +294,3 @@ func (r *productRepository) ListProductsForMonitoring(ctx context.Context) ([]en
 
 	return products, nil
 }
-
-var _ repo.ProductRepository = (*productRepository)(nil)

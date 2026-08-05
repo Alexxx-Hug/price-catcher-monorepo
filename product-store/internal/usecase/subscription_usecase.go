@@ -3,14 +3,14 @@ package usecase
 import (
 	"context"
 	"fmt"
+
 	apperrors "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/app_errors"
-	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/entity"
-	repository "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/repository"
+	entity "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/models"
 )
 
-type SubscriptionUseCaseInterface interface {
+type SubscriptionDataBaseRepository interface {
 	// tg-bot: создает подписку пользователя на конкретный размер товара.
-	CreateSubscription(ctx context.Context, telegramUserID int64, productSizeID int64) (*entity.Subscription, error)
+	CreateSubscription(ctx context.Context, sub *entity.Subscription) (*entity.Subscription, error)
 
 	// tg-bot: показывает пользователю список товаров, которые он отслеживает.
 	ListUserSubscriptions(ctx context.Context, telegramUserID int64) ([]entity.Subscription, error)
@@ -23,10 +23,10 @@ type SubscriptionUseCaseInterface interface {
 }
 
 type SubscriptionUseCase struct {
-	repo repository.SubscriptionRepository
+	repo SubscriptionDataBaseRepository
 }
 
-func NewSubcriptionUseCase(repo repository.SubscriptionRepository) *SubscriptionUseCase {
+func NewSubcriptionUseCase(repo SubscriptionDataBaseRepository) *SubscriptionUseCase {
 	return &SubscriptionUseCase{
 		repo: repo,
 	}

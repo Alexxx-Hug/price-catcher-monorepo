@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	apperrors "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/app_errors"
-	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/entity"
-	repo "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/repository"
+	entity "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/models"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -191,5 +191,3 @@ func (r *subscriptionRepository) ListSubscriptionsByProductSizeID(ctx context.Co
 
 	return subscriptions, nil
 }
-
-var _ repo.SubscriptionRepository = (*subscriptionRepository)(nil)
