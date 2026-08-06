@@ -3,12 +3,14 @@ package providers
 import (
 	"fmt"
 
-	produceradapter "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/adapters/producer"
+	producer "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/adapters/producer"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/config"
 )
 
 type KafkaProvider struct {
-	PriceCheckTaskProducer *produceradapter.KafkaPriceCheckTaskProducer
+	PriceCheckTaskProducer *producer.KafkaPriceCheckTaskProducer
+	PriceChangedProducer   *producer.KafkaPriceChangedProducer
+	DeadLetterProducer     *producer.KafkaDeadLetterProducer
 }
 
 func NewKafkaProvider(cfg config.KafkaConfig) (*KafkaProvider, error) {
@@ -20,18 +22,51 @@ func NewKafkaProvider(cfg config.KafkaConfig) (*KafkaProvider, error) {
 		return nil, fmt.Errorf("task check prices topic is not configured")
 	}
 
+	if cfg.ProductCheckedDLQTopic == "" {
+		return nil, fmt.Errorf("product checked dlq topic is not configured")
+	}
+
+	if cfg.ProductPriceChangedTopic == "" {
+		return nil, fmt.Errorf("product price changed topic is not configured")
+	}
+
 	return &KafkaProvider{
-		PriceCheckTaskProducer: produceradapter.NewKafkaPriceCheckTaskProducer(
+		PriceCheckTaskProducer: producer.NewKafkaPriceCheckTaskProducer(
 			cfg.BrokerList(),
 			cfg.TaskCheckPricesTopic,
 		),
+		DeadLetterProducer: producer.NewKafkaDeadLetterProducer(
+			cfg.BrokerList(),
+			cfg.ProductCheckedDLQTopic,
+		),
+		PriceChangedProducer: producer.NewKafkaPriceChangedProducer(
+			cfg.BrokerList(),
+			cfg.ProductPriceChangedTopic),
 	}, nil
 }
 
 func (p *KafkaProvider) Close() error {
-	if p == nil || p.PriceCheckTaskProducer == nil {
+	if p == nil {
 		return nil
 	}
 
-	return p.PriceCheckTaskProducer.Close()
+	if p.PriceCheckTaskProducer != nil {
+		if err := p.PriceCheckTaskProducer.Close(); err != nil {
+			return err
+		}
+	}
+
+	if p.DeadLetterProducer != nil {
+		if err := p.DeadLetterProducer.Close(); err != nil {
+			return err
+		}
+	}
+
+	if p.PriceChangedProducer != nil {
+		if err := p.PriceChangedProducer.Close(); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

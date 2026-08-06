@@ -35,6 +35,7 @@ type KafkaConfig struct {
 	Brokers                  string `env:"KAFKA_BROKERS" env-default:"localhost:9092"`
 	TaskCheckPricesTopic     string `env:"KAFKA_TOPIC_TASK_CHECK_PRICES" env-default:"task-check-prices"`
 	ProductCheckedTopic      string `env:"KAFKA_TOPIC_PRODUCT_CHECKED" env-default:"product-checked"`
+	ProductCheckedDLQTopic   string `env:"KAFKA_TOPIC_PRODUCT_CHECKED_DLQ" env-default:"product-checked.dlq"`
 	ProductPriceChangedTopic string `env:"KAFKA_TOPIC_PRODUCT_PRICE_CHANGED" env-default:"product-price-changed"`
 	UserActionsTopic         string `env:"KAFKA_TOPIC_USER_ACTIONS" env-default:"user-actions"`
 	GroupID                  string `env:"KAFKA_GROUP_ID" env-default:"product-store"`

@@ -294,3 +294,102 @@ func (r *productRepository) ListProductsForMonitoring(ctx context.Context, limit
 
 	return products, nil
 }
+
+func (r *productRepository) GetProductSizeWithProductByID(ctx context.Context, productSizeID int64) (*entity.ProductSizeWithProduct, error) {
+	var productWithSize entity.ProductSizeWithProduct
+
+	const query = `
+		SELECT
+			p.id,
+			ps.id,
+			p.nm_id,
+			ps.option_id,
+			p.name,
+			p.brand,
+			p.url,
+			ps.name,
+			ps.price_minor,
+			ps.quantity,
+			ps.in_stock
+		FROM shop.product_sizes ps
+		JOIN shop.products p ON p.id = ps.product_id
+		WHERE ps.id = $1
+	`
+
+	err := r.db.QueryRow(ctx, query, productSizeID).Scan(
+		&productWithSize.ProductID,
+		&productWithSize.ProductSizeID,
+		&productWithSize.NmID,
+		&productWithSize.OptionID,
+		&productWithSize.ProductName,
+		&productWithSize.Brand,
+		&productWithSize.URL,
+		&productWithSize.Size,
+		&productWithSize.OldPriceMinor,
+		&productWithSize.Quantity,
+		&productWithSize.InStock,
+	)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("%w: product_size_id=%d", apperrors.ErrProductSizeNotFound, productSizeID)
+		}
+
+		return nil, fmt.Errorf("get product size with product by id=%d: %w", productSizeID, err)
+	}
+
+	return &productWithSize, nil
+}
+
+func (r *productRepository) UpdateProductSizeCheckResult(ctx context.Context, input entity.ProductSizeCheckInput) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	const getProductIdQuery = `
+	SELECT product_id FROM shop.product_sizes
+	WHERE id=$1
+	`
+
+	var productId int64
+	err = tx.QueryRow(ctx, getProductIdQuery, input.ProductSizeID).Scan(&productId)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: product_size_id=%d", apperrors.ErrProductSizeNotFound, input.ProductSizeID)
+		}
+
+		return fmt.Errorf("get product id by product_size_id=%d: %w", input.ProductSizeID, err)
+	}
+
+	const updateProductSizeQuery = `
+	UPDATE shop.product_sizes
+	SET price_minor = $1,quantity = $2,in_stock = $3,updated_at = $4
+	WHERE id = $5
+	`
+	res, err := tx.Exec(ctx, updateProductSizeQuery, input.PriceMinor, input.Quantity, input.InStock, input.UpdatedAt, input.ProductSizeID)
+	if err != nil {
+		return fmt.Errorf("update product size check result: %w", err)
+	}
+
+	if res.RowsAffected() == 0 {
+		return fmt.Errorf("%w: product_size_id=%d", apperrors.ErrProductSizeNotFound, input.ProductSizeID)
+	}
+
+	const updateProductQuery = `
+	UPDATE shop.products
+	SET updated_at=$1
+	WHERE id=$2
+	`
+
+	if _, err := tx.Exec(ctx, updateProductQuery, input.UpdatedAt, productId); err != nil {
+		return fmt.Errorf("update product updated_at: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit product size check result: %w", err)
+	}
+
+	return nil
+}

@@ -42,8 +42,8 @@ type ProductPriceChangedEvent struct {
 	EventID        string    `json:"event_id"`
 	TelegramUserID int64     `json:"telegram_user_id"`
 	ProductID      int64     `json:"product_id"`
+	ProductName    string    `json:"product_name"`
 	ProductSizeID  int64     `json:"product_size_id"`
-	Name           string    `json:"name"`
 	Brand          string    `json:"brand"`
 	Size           string    `json:"size"`
 	URL            string    `json:"url"`

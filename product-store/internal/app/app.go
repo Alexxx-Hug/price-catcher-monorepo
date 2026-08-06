@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	consumeradapter "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/adapters/consumer"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/config"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/db"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/providers"
@@ -24,6 +25,7 @@ type App struct {
 	server              *http.Server
 	priceCheckScheduler *scheduler.PriceCheckScheduler
 	readinessChecker    *http.ReadinessChecker
+	productChecked      *consumeradapter.ProductCheckedConsumer
 }
 
 func NewApp(ctx context.Context, cfg *config.Config, logger *zap.Logger) (*App, func(), error) {
@@ -38,14 +40,24 @@ func NewApp(ctx context.Context, cfg *config.Config, logger *zap.Logger) (*App, 
 		return nil, nil, fmt.Errorf("init kafka provider: %w", err)
 	}
 
+	subRepo := postgres.NewSubscriptionRepository(pool)
 	productRepo := postgres.NewProductRepository(pool)
-	productUseCase := usecase.NewProductUseCase(productRepo, logger, kafkaProvider.PriceCheckTaskProducer)
+	productUseCase := usecase.NewProductUseCase(productRepo, subRepo, logger, kafkaProvider.PriceCheckTaskProducer, kafkaProvider.PriceChangedProducer)
+	productCheckedConsumer := consumeradapter.NewProductCheckedConsumer(
+		cfg.Kafka.BrokerList(),
+		cfg.Kafka.ProductCheckedTopic,
+		cfg.Kafka.GroupID,
+		productUseCase,
+		kafkaProvider.DeadLetterProducer,
+		logger,
+	)
 	priceCheckScheduler := scheduler.NewPriceCheckScheduler(
 		productUseCase,
 		cfg.Monitoring.PriceCheckInterval,
 		cfg.Monitoring.PriceCheckBatchLimit,
 		logger,
 	)
+
 	readinessChecker := http.NewReadinessChecker(
 		pool.Ping,
 		cfg.HTTP.ReadinessCheckInterval,
@@ -57,6 +69,7 @@ func NewApp(ctx context.Context, cfg *config.Config, logger *zap.Logger) (*App, 
 	httpServer := http.NewServer(cfg.HTTP.Port, httpRouter.GetEngine(), logger)
 
 	cleanup := func() {
+		_ = productCheckedConsumer.Close()
 		pool.Close()
 		_ = kafkaProvider.Close()
 	}
@@ -67,6 +80,7 @@ func NewApp(ctx context.Context, cfg *config.Config, logger *zap.Logger) (*App, 
 		server:              httpServer,
 		priceCheckScheduler: priceCheckScheduler,
 		readinessChecker:    readinessChecker,
+		productChecked:      productCheckedConsumer,
 	}, cleanup, nil
 }
 
@@ -86,6 +100,12 @@ func (a *App) Run(ctx context.Context) error {
 	go func() {
 		if err := a.readinessChecker.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			a.logger.Error("readiness checker stopped", zap.Error(err))
+		}
+	}()
+
+	go func() {
+		if err := a.productChecked.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			a.logger.Error("product checked consumer stopped", zap.Error(err))
 		}
 	}()
 
