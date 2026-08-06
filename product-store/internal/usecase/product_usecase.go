@@ -4,17 +4,21 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"time"
+
 	apperrors "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/app_errors"
-	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/entity"
-	repository "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/repository"
+	entity "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/models"
+	eventdto "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/models/eventdto"
+	"github.com/google/uuid"
 
 	"go.uber.org/zap"
 )
 
-type ProductUseCaseInterface interface {
+type ProductDataBaseRepository interface {
 	// tg-bot: сохраняет товар после парсинга WB, когда пользователь добавляет ссылку.
 	// monitor: обновляет товар, размеры, цены и остатки после очередной проверки WB.
-	UpsertProductWithSizes(ctx context.Context, request UpsertProductInput) (*entity.Product, error)
+	UpsertProductWithSizes(ctx context.Context, product *entity.Product) (*entity.Product, error)
 
 	// tg-bot: проверяет, есть ли товар уже в базе, когда пользователь прислал WB-ссылку.
 	GetProductByNmID(ctx context.Context, nmID int64) (*entity.Product, error)
@@ -23,22 +27,40 @@ type ProductUseCaseInterface interface {
 	GetProductSizeByOptionID(ctx context.Context, optionID int64) (*entity.ProductSize, error)
 
 	// monitor: получает список товаров, которые нужно периодически проверять в WB.
-	ListProductsForMonitoring(ctx context.Context) ([]entity.Product, error)
+	ListProductsForMonitoring(ctx context.Context, limit int) ([]entity.Product, error)
+
+	GetProductSizeWithProductByID(ctx context.Context, productSizeID int64) (*entity.ProductSizeWithProduct, error)
+
+	UpdateProductSizeCheckResult(ctx context.Context, input entity.ProductSizeCheckInput) error
+}
+
+type PriceCheckTaskProducer interface {
+	SendPriceCheckTask(ctx context.Context, event eventdto.TaskCheckPricesEvent) error
+}
+
+type PriceChangedProducer interface {
+	SendProductPriceChanged(ctx context.Context, event eventdto.ProductPriceChangedEvent) error
 }
 
 type productUseCase struct {
-	repo   repository.ProductRepository
-	logger *zap.Logger
+	repo                   ProductDataBaseRepository
+	subRepo                SubscriptionDataBaseRepository
+	logger                 *zap.Logger
+	priceCheckTaskProducer PriceCheckTaskProducer
+	priceChangedProducer   PriceChangedProducer
 }
 
-func NewProductUseCase(repo repository.ProductRepository, logger *zap.Logger) *productUseCase {
+func NewProductUseCase(repo ProductDataBaseRepository, subRepo SubscriptionDataBaseRepository, logger *zap.Logger, priceCheckTaskProducer PriceCheckTaskProducer, priceChangedProducer PriceChangedProducer) *productUseCase {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
 
 	return &productUseCase{
-		repo:   repo,
-		logger: logger,
+		repo:                   repo,
+		logger:                 logger,
+		priceCheckTaskProducer: priceCheckTaskProducer,
+		subRepo:                subRepo,
+		priceChangedProducer:   priceChangedProducer,
 	}
 }
 
@@ -140,8 +162,12 @@ func (u *productUseCase) GetProductSizeByOptionID(ctx context.Context, optionID 
 	return productSize, nil
 }
 
-func (u *productUseCase) ListProductsForMonitoring(ctx context.Context) ([]entity.Product, error) {
-	products, err := u.repo.ListProductsForMonitoring(ctx)
+func (u *productUseCase) ListProductsForMonitoring(ctx context.Context, limit int) ([]entity.Product, error) {
+	if limit <= 0 {
+		limit = 5
+	}
+
+	products, err := u.repo.ListProductsForMonitoring(ctx, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get list of products: %w", err)
 	}
@@ -151,4 +177,99 @@ func (u *productUseCase) ListProductsForMonitoring(ctx context.Context) ([]entit
 	}
 
 	return products, nil
+}
+
+func (u *productUseCase) PublishPriceCheckTasks(ctx context.Context, limit int) error {
+	products, err := u.repo.ListProductsForMonitoring(ctx, limit)
+	if err != nil {
+		return fmt.Errorf("failed to get product list: %w", err)
+	}
+
+	for _, product := range products {
+		for _, size := range product.Sizes {
+			event := eventdto.TaskCheckPricesEvent{
+				TaskID:        uuid.NewString(),
+				ProductID:     product.ID,
+				ProductSizeID: size.ID,
+				NmID:          product.NmID,
+				OptionID:      size.OptionID,
+				URL:           product.URL,
+				PriceMinor:    size.PriceMinor,
+				RequestedAt:   time.Now(),
+			}
+			err := u.priceCheckTaskProducer.SendPriceCheckTask(ctx, event)
+			if err != nil {
+				return fmt.Errorf("failed to send event: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+func (u *productUseCase) ProcessCheckedProduct(ctx context.Context, event eventdto.ProductCheckedEvent) error {
+	if event.ProductSizeID <= 0 {
+		return apperrors.ErrInvalidProductSizeID
+	}
+
+	u.logger.Info(
+		"product checked event received",
+		zap.String("task_id", event.TaskID),
+		zap.Int64("product_size_id", event.ProductSizeID),
+	)
+
+	productWithSize, err := u.repo.GetProductSizeWithProductByID(ctx, event.ProductSizeID)
+	if err != nil {
+		return fmt.Errorf("get product size with product: %w", err)
+	}
+
+	output := entity.ProductSizeCheckInput{
+		ProductSizeID: event.ProductSizeID,
+		PriceMinor:    event.PriceMinor,
+		Quantity:      event.Quantity,
+		InStock:       event.InStock,
+		UpdatedAt:     event.CheckedAt,
+	}
+
+	if productWithSize.OldPriceMinor == event.PriceMinor {
+		err := u.repo.UpdateProductSizeCheckResult(ctx, output)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
+	err = u.repo.UpdateProductSizeCheckResult(ctx, output)
+	if err != nil {
+		return err
+	}
+
+	subs, err := u.subRepo.ListSubscriptionsByProductSizeID(ctx, event.ProductSizeID)
+	if err != nil {
+		return err
+	}
+
+	for _, sub := range subs {
+		priceChangedEvent := eventdto.ProductPriceChangedEvent{
+			EventID:        uuid.NewString(),
+			TelegramUserID: sub.TelegramUserID,
+			ProductID:      productWithSize.ProductID,
+			ProductSizeID:  event.ProductSizeID,
+			ProductName:    productWithSize.ProductName,
+			Brand:          productWithSize.Brand,
+			Size:           productWithSize.Size,
+			URL:            productWithSize.URL,
+			OldPriceMinor:  productWithSize.OldPriceMinor,
+			NewPriceMinor:  event.PriceMinor,
+			DeltaMinor:     int(math.Abs(float64(productWithSize.OldPriceMinor) - float64(event.PriceMinor))),
+			ChangedAt:      time.Now(),
+		}
+
+		err := u.priceChangedProducer.SendProductPriceChanged(ctx, priceChangedEvent)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

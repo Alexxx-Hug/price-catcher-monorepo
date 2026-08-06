@@ -1,9 +1,10 @@
 package entity
 
 import (
-	apperrors "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/app_errors"
 	"strings"
 	"time"
+
+	apperrors "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/app_errors"
 )
 
 type Product struct {
@@ -27,6 +28,28 @@ type ProductSize struct {
 	Quantity   int
 	InStock    bool
 	UpdatedAt  time.Time
+}
+
+type ProductSizeWithProduct struct {
+	ProductID     int64
+	ProductSizeID int64
+	NmID          int64
+	OptionID      int64
+	ProductName   string
+	Brand         string
+	URL           string
+	Size          string
+	OldPriceMinor int
+	Quantity      int
+	InStock       bool
+}
+
+type ProductSizeCheckInput struct {
+	ProductSizeID int64
+	PriceMinor    int
+	Quantity      int
+	InStock       bool
+	UpdatedAt     time.Time
 }
 
 func NewProduct(nmID int64, name string, brand string, url string, totalQuantity int, sizes []ProductSize) (*Product, error) {
