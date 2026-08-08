@@ -11,7 +11,6 @@ const (
 	UserActionAddProduct         UserActionType = "add_product"
 	UserActionDeleteSubscription UserActionType = "delete_subscription"
 	UserActionListSubscriptions  UserActionType = "list_subscriptions"
-	UserActionSetTargetPrice     UserActionType = "set_target_price"
 )
 
 // ивент для топика task-check-prices
