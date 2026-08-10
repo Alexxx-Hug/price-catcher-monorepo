@@ -8,10 +8,16 @@ import (
 )
 
 type MockKafkaUserActionProducer struct {
-	logger *zap.Logger
+	Logger *zap.Logger
+}
+
+func NewMockKafkaUserActionProducer(logger *zap.Logger) *MockKafkaUserActionProducer {
+	return &MockKafkaUserActionProducer{
+		Logger: logger,
+	}
 }
 
 func (p *MockKafkaUserActionProducer) SendUserAction(ctx context.Context, event events.UserActionEvent) error {
-	p.logger.Info("user action event produced", zap.Any("event", event))
+	p.Logger.Info("user action event produced", zap.Any("event", event))
 	return nil
 }

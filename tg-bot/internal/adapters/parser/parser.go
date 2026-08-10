@@ -14,7 +14,7 @@ func (p *ProductParser) ParseProduct(ctx context.Context, url string) (*models.P
 		NmID:          123,
 		Name:          "mock_product",
 		Brand:         "mock_brand",
-		URL:           "mock_url",
+		URL:           url,
 		TotalQuantity: 10,
 		Sizes: []models.ProductSize{
 			{OptionID: 111, SizeName: "42", OrigName: "42", PriceMinor: 199900, Quantity: 3},

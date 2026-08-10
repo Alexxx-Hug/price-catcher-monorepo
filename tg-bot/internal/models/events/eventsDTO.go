@@ -21,5 +21,5 @@ type UserActionEvent struct {
 
 type AddSubscriptionPayload struct {
 	Product          models.Product `json:"product"`
-	SelectecOptionID int64          `json:"selected_option_id"`
+	SelectedOptionID int64          `json:"selected_option_id"`
 }
