@@ -26,6 +26,7 @@ type App struct {
 	priceCheckScheduler *scheduler.PriceCheckScheduler
 	readinessChecker    *http.ReadinessChecker
 	productChecked      *consumeradapter.ProductCheckedConsumer
+	userAction          *consumeradapter.UserActionConsumer
 }
 
 func NewApp(ctx context.Context, cfg *config.Config, logger *zap.Logger) (*App, func(), error) {
@@ -43,12 +44,21 @@ func NewApp(ctx context.Context, cfg *config.Config, logger *zap.Logger) (*App, 
 	subRepo := postgres.NewSubscriptionRepository(pool)
 	productRepo := postgres.NewProductRepository(pool)
 	productUseCase := usecase.NewProductUseCase(productRepo, subRepo, logger, kafkaProvider.PriceCheckTaskProducer, kafkaProvider.PriceChangedProducer)
+	subscriptionUseCase := usecase.NewSubcriptionUseCase(subRepo)
+	userActionUseCase := usecase.NewUserActionUseCase(productUseCase, subscriptionUseCase, logger)
 	productCheckedConsumer := consumeradapter.NewProductCheckedConsumer(
 		cfg.Kafka.BrokerList(),
 		cfg.Kafka.ProductCheckedTopic,
 		cfg.Kafka.GroupID,
 		productUseCase,
 		kafkaProvider.DeadLetterProducer,
+		logger,
+	)
+	userActionConsumer := consumeradapter.NewUserActionConsumer(
+		cfg.Kafka.BrokerList(),
+		cfg.Kafka.UserActionsTopic,
+		cfg.Kafka.GroupID,
+		userActionUseCase,
 		logger,
 	)
 	priceCheckScheduler := scheduler.NewPriceCheckScheduler(
@@ -70,6 +80,7 @@ func NewApp(ctx context.Context, cfg *config.Config, logger *zap.Logger) (*App, 
 
 	cleanup := func() {
 		_ = productCheckedConsumer.Close()
+		_ = userActionConsumer.Close()
 		pool.Close()
 		_ = kafkaProvider.Close()
 	}
@@ -81,6 +92,7 @@ func NewApp(ctx context.Context, cfg *config.Config, logger *zap.Logger) (*App, 
 		priceCheckScheduler: priceCheckScheduler,
 		readinessChecker:    readinessChecker,
 		productChecked:      productCheckedConsumer,
+		userAction:          userActionConsumer,
 	}, cleanup, nil
 }
 
@@ -106,6 +118,12 @@ func (a *App) Run(ctx context.Context) error {
 	go func() {
 		if err := a.productChecked.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			a.logger.Error("product checked consumer stopped", zap.Error(err))
+		}
+	}()
+
+	go func() {
+		if err := a.userAction.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			a.logger.Error("user action consumer stopped", zap.Error(err))
 		}
 	}()
 

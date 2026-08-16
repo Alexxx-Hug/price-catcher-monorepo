@@ -102,8 +102,8 @@ func (u *BotUseCase) SelectSize(ctx context.Context, telegramUserID int64, optio
 	}
 
 	payload := events.AddSubscriptionPayload{
-		Product:          pending.Product,
-		SelectedOptionID: optionID,
+		Product:     pending.Product,
+		ProductSize: *selectedSize,
 	}
 
 	payloadBytes, err := json.Marshal(payload)

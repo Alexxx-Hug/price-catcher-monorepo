@@ -9,7 +9,9 @@ import (
 
 type UserActionType string
 
-const UserActionAddSubscription UserActionType = "add_subscription"
+const (
+	UserActionAddSubscription UserActionType = "add_subscription"
+)
 
 type UserActionEvent struct {
 	ActionID       string          `json:"action_id"`
@@ -20,6 +22,6 @@ type UserActionEvent struct {
 }
 
 type AddSubscriptionPayload struct {
-	Product          models.Product `json:"product"`
-	SelectedOptionID int64          `json:"selected_option_id"`
+	Product     models.Product     `json:"product"`
+	ProductSize models.ProductSize `json:"product_size"`
 }
