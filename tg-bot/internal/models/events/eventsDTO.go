@@ -10,7 +10,8 @@ import (
 type UserActionType string
 
 const (
-	UserActionAddSubscription UserActionType = "add_subscription"
+	UserActionAddSubscription    UserActionType = "add_subscription"
+	UserActionDeleteSubscription UserActionType = "delete_subscription"
 )
 
 type UserActionEvent struct {
@@ -24,4 +25,8 @@ type UserActionEvent struct {
 type AddSubscriptionPayload struct {
 	Product     models.Product     `json:"product"`
 	ProductSize models.ProductSize `json:"product_size"`
+}
+
+type DeleteSubscriptionPayload struct {
+	SubscriptionID int64 `json:"subscription_id"`
 }

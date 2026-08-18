@@ -11,3 +11,8 @@ type Subscription struct {
 	PriceMinor     int
 	URL            string
 }
+
+type DeleteSubscriptionResult struct {
+	Text          string
+	Subscriptions []Subscription
+}
