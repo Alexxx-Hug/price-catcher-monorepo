@@ -8,7 +8,7 @@ import (
 type UserActionType string
 
 const (
-	UserActionAddProduct         UserActionType = "add_product"
+	UserActionAddSubcription     UserActionType = "add_subscription"
 	UserActionDeleteSubscription UserActionType = "delete_subscription"
 	UserActionListSubscriptions  UserActionType = "list_subscriptions"
 )
@@ -59,3 +59,26 @@ type UserActionEvent struct {
 	Payload        json.RawMessage `json:"payload"`
 	CreatedAt      time.Time       `json:"created_at"`
 }
+
+type AddSubscriptionPayload struct {
+	Product     ProductPayload     `json:"product"`
+	ProductSize ProductSizePayload `json:"product_size"`
+}
+
+type ProductPayload struct {
+	NmID          int64                `json:"nm_id"`
+	Name          string               `json:"name"`
+	Brand         string               `json:"brand"`
+	URL           string               `json:"url"`
+	TotalQuantity int                  `json:"total_quantity"`
+	Sizes         []ProductSizePayload `json:"sizes"`
+}
+
+type ProductSizePayload struct {
+	OptionID   int64  `json:"option_id"`
+	SizeName   string `json:"size_name"`
+	OrigName   string `json:"orig_name"`
+	PriceMinor int    `json:"price_minor"`
+	Quantity   int    `json:"quantity"`
+}
+

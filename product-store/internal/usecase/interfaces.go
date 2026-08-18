@@ -15,3 +15,10 @@ type ProductUseCaseInterface interface {
 	PublishPriceCheckTasks(ctx context.Context, limit int) error
 	ProcessCheckedProduct(ctx context.Context, event eventdto.ProductCheckedEvent) error
 }
+
+type SubscriptionUseCaseInterface interface {
+	CreateSubscription(ctx context.Context, telegramUserID int64, productSizeID int64) (*entity.Subscription, error)
+	ListUserSubscriptions(ctx context.Context, telegramUserID int64) ([]entity.Subscription, error)
+	DeleteSubscriptionAndCleanupProduct(ctx context.Context, telegramUserID int64, productSizeID int64) error
+	ListSubscriptionsByProductSizeID(ctx context.Context, productSizeID int64) ([]entity.Subscription, error)
+}

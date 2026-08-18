@@ -2,8 +2,13 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"time"
 
 	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/models"
+	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/models/events"
+	"github.com/google/uuid"
 )
 
 type BotUseCase struct {
@@ -14,11 +19,112 @@ type BotUseCase struct {
 	pending    map[int64]models.PendingSubscription
 }
 
+type SizeChoiceResult struct {
+	Text  string
+	Sizes []models.ProductSize
+}
+
+func NewBotUseCase(parser ProductParser, producer UserActionProducer) *BotUseCase {
+	return &BotUseCase{
+		parser:     parser,
+		producer:   producer,
+		userStates: make(map[int64]models.UserState),
+		pending:    make(map[int64]models.PendingSubscription),
+	}
+}
+
 // return message to user: "Пришли ссылку на товар"
-func (u *BotUseCase) StartAddSubscription(ctx context.Context, telegramUserID int64) string
+func (u *BotUseCase) StartAddSubscription(ctx context.Context, telegramUserID int64) string {
+	u.userStates[telegramUserID] = models.StateWaitingProductURL
+	return "Жду ссылку на товар!"
+}
 
 // send request to monitor service and return text with all size of product
-func (u *BotUseCase) HandleProductURL(ctx context.Context, TelegramUserID int64, url string) (string, error)
+func (u *BotUseCase) HandleProductURL(ctx context.Context, telegramUserID int64, url string) (*SizeChoiceResult, error) {
+	state := u.userStates[telegramUserID]
+	if state != models.StateWaitingProductURL {
+		return nil, fmt.Errorf("unexpected user state: %s", state)
+	}
+
+	product, err := u.parser.ParseProduct(ctx, url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse product: %w", err)
+	}
+
+	if product == nil {
+		return nil, fmt.Errorf("product is nil")
+	}
+
+	if len(product.Sizes) == 0 {
+		return nil, fmt.Errorf("product has no sizes")
+	}
+
+	u.pending[telegramUserID] = models.PendingSubscription{
+		Product: *product,
+	}
+
+	sizes := make([]models.ProductSize, 0, len(product.Sizes))
+	for _, size := range product.Sizes {
+		sizes = append(sizes, size)
+	}
+
+	sizeChoiceResult := SizeChoiceResult{
+		Text:  "Выбери нужный размер",
+		Sizes: sizes,
+	}
+
+	u.userStates[telegramUserID] = models.StateWaitingSizeChoice
+
+	return &sizeChoiceResult, nil
+}
 
 // when user choose the size service will return him a message: "принял в обработку"
-func (u *BotUseCase) SelectSize(ctx context.Context, telegramUserID int64, optionID int64) (string, error)
+func (u *BotUseCase) SelectSize(ctx context.Context, telegramUserID int64, optionID int64) (string, error) {
+	state := u.userStates[telegramUserID]
+	if state != models.StateWaitingSizeChoice {
+		return "", fmt.Errorf("unexpected user state")
+	}
+
+	pending, exist := u.pending[telegramUserID]
+	if !exist {
+		return "", fmt.Errorf("pending subscription not found")
+	}
+
+	var selectedSize *models.ProductSize
+	for _, size := range pending.Product.Sizes {
+		if size.OptionID == optionID {
+			selectedSize = &size
+		}
+	}
+
+	if selectedSize == nil {
+		return "", fmt.Errorf("product size with option_id=%d not found", optionID)
+	}
+
+	payload := events.AddSubscriptionPayload{
+		Product:     pending.Product,
+		ProductSize: *selectedSize,
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal add subscription payload: %w", err)
+	}
+
+	event := events.UserActionEvent{
+		ActionID:       uuid.NewString(),
+		TelegramUserID: telegramUserID,
+		Type:           events.UserActionAddSubscription,
+		Payload:        payloadBytes,
+		CreatedAt:      time.Now(),
+	}
+
+	if err := u.producer.SendUserAction(ctx, event); err != nil {
+		return "", fmt.Errorf("failed to send user action event: %w", err)
+	}
+
+	delete(u.pending, telegramUserID)
+	u.userStates[telegramUserID] = models.StateIdle
+
+	return fmt.Sprintf("Принял, добавляю подписку на %s, размер: %s", pending.Product.Name, selectedSize.SizeName), nil
+}
