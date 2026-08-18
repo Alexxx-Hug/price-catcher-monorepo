@@ -1,8 +1,9 @@
 package entity
 
 import (
-	apperrors "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/app_errors"
 	"time"
+
+	apperrors "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/app_errors"
 )
 
 type Subscription struct {
@@ -26,4 +27,16 @@ func NewSubscription(telegramUserID int64, productSizeID int64) (*Subscription, 
 		ProductSizeID:  productSizeID,
 		CreatedAt:      time.Now(),
 	}, nil
+}
+
+type UserSubscriptionItem struct {
+	SubscriptionID int64
+	ProductID      int64
+	ProductSizeID  int64
+	NmID           int64
+	ProductName    string
+	Brand          string
+	SizeName       string
+	PriceMinor     int
+	URL            string
 }

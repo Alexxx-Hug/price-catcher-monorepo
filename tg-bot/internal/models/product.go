@@ -23,6 +23,7 @@ const (
 	StateIdle              UserState = "idle"
 	StateWaitingProductURL UserState = "waiting_product_url"
 	StateWaitingSizeChoice UserState = "waiting_size_choice"
+	
 )
 
 type PendingSubscription struct {

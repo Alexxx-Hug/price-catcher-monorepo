@@ -14,3 +14,7 @@ type ProductParser interface {
 type UserActionProducer interface {
 	SendUserAction(ctx context.Context, event events.UserActionEvent) error
 }
+
+type SubscriptionProvider interface {
+	ListUserSubscriptions(ctx context.Context, telegramUserID int64) ([]models.Subscription, error)
+}

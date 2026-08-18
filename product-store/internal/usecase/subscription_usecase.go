@@ -20,6 +20,8 @@ type SubscriptionDataBaseRepository interface {
 
 	// monitor: получает подписки на размер товара, если цена изменилась или стала ниже целевой.
 	ListSubscriptionsByProductSizeID(ctx context.Context, productSizeID int64) ([]entity.Subscription, error)
+
+	ListUserSubscriptionItems(ctx context.Context, telegramUserID int64) ([]entity.UserSubscriptionItem, error)
 }
 
 type SubscriptionUseCase struct {
@@ -79,4 +81,17 @@ func (h *SubscriptionUseCase) ListSubscriptionsByProductSizeID(ctx context.Conte
 	}
 
 	return subscriptions, nil
+}
+
+func (h *SubscriptionUseCase) ListUserSubscriptionItems(ctx context.Context, telegramUserID int64) ([]entity.UserSubscriptionItem, error) {
+	items, err := h.repo.ListUserSubscriptionItems(ctx, telegramUserID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user subscription items: %w", err)
+	}
+
+	if items == nil {
+		return nil, apperrors.ErrSubscriptionNotFound
+	}
+
+	return items, nil
 }

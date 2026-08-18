@@ -20,6 +20,11 @@ type HTTPConfig struct {
 	ReadinessCheckTimeout  time.Duration `env:"READINESS_CHECK_TIMEOUT" env-default:"2s"`
 }
 
+type GRPCConfig struct {
+	Port    string `env:"GRPC_PORT" env-default:"50051"`
+	Timeout time.Duration `env:"GRPC_TIMEOUT" env-default:"5s"`
+}
+
 type DBConfig struct {
 	Port         string `env:"DB_PORT" env-default:"5432"`
 	Host         string `env:"DB_HOST" env-required:"true"`
@@ -63,6 +68,7 @@ func (c KafkaConfig) BrokerList() []string {
 type Config struct {
 	App        AppConfig
 	HTTP       HTTPConfig
+	GRPC       GRPCConfig
 	Kafka      KafkaConfig
 	Monitoring MonitoringConfig
 	DB         DBConfig

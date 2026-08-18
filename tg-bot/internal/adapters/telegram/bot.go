@@ -77,6 +77,12 @@ func (b *Bot) handleMessage(ctx context.Context, message *tgbotapi.Message) erro
 	case "Добавить подписку":
 		response := b.usecase.StartAddSubscription(ctx, telegramUserID)
 		return b.sendText(chatID, response)
+	case "Мои подписки":
+		response, err := b.usecase.ListUserSubscription(ctx, telegramUserID)
+		if err != nil {
+			return b.sendText(chatID, "Не смог получить список подписок")
+		}
+		return b.sendText(chatID, response)
 	default:
 		result, err := b.usecase.HandleProductURL(ctx, telegramUserID, text)
 		if err != nil {
@@ -91,6 +97,7 @@ func (b *Bot) sendMainMenu(chatID int64) error {
 	keyboard := tgbotapi.NewReplyKeyboard(
 		tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton("Добавить подписку"),
+			tgbotapi.NewKeyboardButton("Мои подписки"),
 		),
 	)
 
