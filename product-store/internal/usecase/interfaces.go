@@ -22,4 +22,5 @@ type SubscriptionUseCaseInterface interface {
 	DeleteSubscriptionAndCleanupProduct(ctx context.Context, telegramUserID int64, productSizeID int64) error
 	ListSubscriptionsByProductSizeID(ctx context.Context, productSizeID int64) ([]entity.Subscription, error)
 	ListUserSubscriptionItems(ctx context.Context, telegramUserID int64) ([]entity.UserSubscriptionItem, error)
+	GetSubscriptionByIDAndTelegramUserID(ctx context.Context, subscriptionID, telegramUserID int64) (*entity.Subscription, error)
 }

@@ -65,6 +65,10 @@ type AddSubscriptionPayload struct {
 	ProductSize ProductSizePayload `json:"product_size"`
 }
 
+type DeleteSubscriptionPayload struct {
+	SubscriptionID int64 `json:"subscription_id"`
+}
+
 type ProductPayload struct {
 	NmID          int64                `json:"nm_id"`
 	Name          string               `json:"name"`
@@ -81,4 +85,3 @@ type ProductSizePayload struct {
 	PriceMinor int    `json:"price_minor"`
 	Quantity   int    `json:"quantity"`
 }
-

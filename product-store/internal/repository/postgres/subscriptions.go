@@ -236,3 +236,26 @@ func (r *subscriptionRepository) ListUserSubscriptionItems(ctx context.Context, 
 
 	return listUserSubscriptionsWithProduct, nil
 }
+
+func (r *subscriptionRepository) GetSubscriptionByIDAndTelegramUserID(ctx context.Context, subscriptionID, telegramUserID int64) (*entity.Subscription, error) {
+	const getSubQuery = `
+	SELECT id, telegram_user_id, product_size_id, created_at FROM shop.subscriptions
+	WHERE id = $1 AND telegram_user_id = $2
+	`
+
+	var sub entity.Subscription
+	if err := r.db.QueryRow(ctx, getSubQuery, subscriptionID, telegramUserID).Scan(
+		&sub.ID,
+		&sub.TelegramUserID,
+		&sub.ProductSizeID,
+		&sub.CreatedAt,
+	); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("%w: subscription_id=%d telegram_user_id=%d", apperrors.ErrSubscriptionNotFound, subscriptionID, telegramUserID)
+		}
+
+		return nil, fmt.Errorf("get subscription by id=%d telegram_user_id=%d: %w", subscriptionID, telegramUserID, err)
+	}
+
+	return &sub, nil
+}
