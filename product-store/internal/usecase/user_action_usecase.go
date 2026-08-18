@@ -35,9 +35,6 @@ func (u *UserActionUseCase) ProcessUserAction(ctx context.Context, event eventdt
 	case eventdto.UserActionDeleteSubscription:
 		return fmt.Errorf("delete subscription action is not implemented")
 
-	case eventdto.UserActionListSubscriptions:
-		return fmt.Errorf("list subscriptions action is not implemented")
-
 	default:
 		return fmt.Errorf("unknown user action type: %s", event.Type)
 	}
