@@ -33,10 +33,7 @@ func (u *UserActionUseCase) ProcessUserAction(ctx context.Context, event eventdt
 		return u.processAddSubscriptionWithProduct(ctx, event)
 
 	case eventdto.UserActionDeleteSubscription:
-		return fmt.Errorf("delete subscription action is not implemented")
-
-	case eventdto.UserActionListSubscriptions:
-		return fmt.Errorf("list subscriptions action is not implemented")
+		return u.processDeleteSubscriptionWithProduct(ctx, event)
 
 	default:
 		return fmt.Errorf("unknown user action type: %s", event.Type)
@@ -90,6 +87,24 @@ func (u *UserActionUseCase) processAddSubscriptionWithProduct(ctx context.Contex
 
 	if _, err := u.subscriptionUseCase.CreateSubscription(ctx, event.TelegramUserID, selectedSizeID); err != nil {
 		return fmt.Errorf("failed to save subscription: %w", err)
+	}
+
+	return nil
+}
+
+func (u *UserActionUseCase) processDeleteSubscriptionWithProduct(ctx context.Context, event eventdto.UserActionEvent) error {
+	var payload eventdto.DeleteSubscriptionPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		return fmt.Errorf("failed to unmarshal delete subscription payload")
+	}
+
+	subscription, err := u.subscriptionUseCase.GetSubscriptionByIDAndTelegramUserID(ctx, payload.SubscriptionID, event.TelegramUserID)
+	if err != nil {
+		return fmt.Errorf("failed to get subscription for delete: %w", err)
+	}
+
+	if err := u.subscriptionUseCase.DeleteSubscriptionAndCleanupProduct(ctx, event.TelegramUserID, subscription.ProductSizeID); err != nil {
+		return fmt.Errorf("failed to delete subscription: %w", err)
 	}
 
 	return nil

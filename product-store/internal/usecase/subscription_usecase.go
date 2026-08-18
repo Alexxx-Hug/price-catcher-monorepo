@@ -22,6 +22,8 @@ type SubscriptionDataBaseRepository interface {
 	ListSubscriptionsByProductSizeID(ctx context.Context, productSizeID int64) ([]entity.Subscription, error)
 
 	ListUserSubscriptionItems(ctx context.Context, telegramUserID int64) ([]entity.UserSubscriptionItem, error)
+
+	GetSubscriptionByIDAndTelegramUserID(ctx context.Context, subscriptionID, telegramUserID int64) (*entity.Subscription, error)
 }
 
 type SubscriptionUseCase struct {
@@ -94,4 +96,21 @@ func (h *SubscriptionUseCase) ListUserSubscriptionItems(ctx context.Context, tel
 	}
 
 	return items, nil
+}
+
+func (h *SubscriptionUseCase) GetSubscriptionByIDAndTelegramUserID(ctx context.Context, subscriptionID, telegramUserID int64) (*entity.Subscription, error) {
+	if subscriptionID <= 0 {
+		return nil, fmt.Errorf("invalid subscription_id=%d", subscriptionID)
+	}
+
+	if telegramUserID <= 0 {
+		return nil, fmt.Errorf("invalid telegram_user_id=%d", telegramUserID)
+	}
+
+	subscription, err := h.repo.GetSubscriptionByIDAndTelegramUserID(ctx, subscriptionID, telegramUserID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get subscription: %w", err)
+	}
+
+	return subscription, nil
 }
