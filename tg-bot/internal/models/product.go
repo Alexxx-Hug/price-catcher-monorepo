@@ -20,10 +20,10 @@ type ProductSize struct {
 type UserState string
 
 const (
-	StateIdle              UserState = "idle"
-	StateWaitingProductURL UserState = "waiting_product_url"
-	StateWaitingSizeChoice UserState = "waiting_size_choice"
-	
+	StateIdle                                UserState = "idle"
+	StateWaitingProductURL                   UserState = "waiting_product_url"
+	StateWaitingSizeChoiceForAddSubscription UserState = "waiting_size_choice_for_add_sub"
+	StateWaitingSubscriptionChoiceForDelete  UserState = "waiting_subscription_choice_for_delete"
 )
 
 type PendingSubscription struct {

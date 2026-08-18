@@ -83,6 +83,13 @@ func (b *Bot) handleMessage(ctx context.Context, message *tgbotapi.Message) erro
 			return b.sendText(chatID, "Не смог получить список подписок")
 		}
 		return b.sendText(chatID, response)
+	case "Удалить подписку":
+		result, err := b.usecase.DeleteUserSubscription(ctx, telegramUserID)
+		if err != nil {
+			return b.sendText(chatID, "Не смог получить список подписок")
+		}
+
+		return b.sendDeleteSubscriptionChoice(chatID, result)
 	default:
 		result, err := b.usecase.HandleProductURL(ctx, telegramUserID, text)
 		if err != nil {
@@ -98,6 +105,7 @@ func (b *Bot) sendMainMenu(chatID int64) error {
 		tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton("Добавить подписку"),
 			tgbotapi.NewKeyboardButton("Мои подписки"),
+			tgbotapi.NewKeyboardButton("Удалить подписку"),
 		),
 	)
 
@@ -149,6 +157,32 @@ func (b *Bot) sendSizeChoice(chatID int64, result *service.SizeChoiceResult) err
 	return nil
 }
 
+func (b *Bot) sendDeleteSubscriptionChoice(chatID int64, result *service.DeleteSubscriptionResult) error {
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, len(result.Subscriptions))
+
+	for ind, sub := range result.Subscriptions {
+		buttonText := fmt.Sprintf("%d.%s, размер: %s\n", ind+1, sub.ProductName, sub.SizeName)
+		callbackData := fmt.Sprintf("delete_subscription:%d", sub.SubscriptionID)
+
+		row := tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(buttonText, callbackData),
+		)
+
+		rows = append(rows, row)
+	}
+
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(rows...)
+
+	msg := tgbotapi.NewMessage(chatID, result.Text)
+	msg.ReplyMarkup = keyboard
+
+	if _, err := b.api.Send(msg); err != nil {
+		return fmt.Errorf("send telegram delete subscription choice: %w", err)
+	}
+
+	return nil
+}
+
 func (b *Bot) handleCallback(ctx context.Context, callback *tgbotapi.CallbackQuery) error {
 	if callback.Message == nil {
 		return nil
@@ -157,34 +191,62 @@ func (b *Bot) handleCallback(ctx context.Context, callback *tgbotapi.CallbackQue
 	telegramUserID := callback.From.ID
 	chatID := callback.Message.Chat.ID
 
-	const prefix = "size:"
+	const (
+		sizePrefix   = "size:"
+		deletePrefix = "delete_subscription:"
+	)
 
-	if !strings.HasPrefix(callback.Data, prefix) {
-		return b.answerCallback(callback.ID, "Неизвестное действие")
+	if rawOptionID, ok := strings.CutPrefix(callback.Data, sizePrefix); ok {
+		optionID, err := strconv.ParseInt(rawOptionID, 10, 64)
+		if err != nil {
+			return b.answerCallback(callback.ID, "Не смог прочитать размер")
+		}
+
+		response, err := b.usecase.SelectSize(ctx, telegramUserID, optionID)
+		if err != nil {
+			b.logger.Error(
+				"failed to select size",
+				zap.Int64("telegram_user_id", telegramUserID),
+				zap.Int64("option_id", optionID),
+				zap.Error(err),
+			)
+
+			return b.answerCallback(callback.ID, "Не смог выбрать размер")
+		}
+
+		if err := b.answerCallback(callback.ID, "Размер выбран"); err != nil {
+			return err
+		}
+
+		return b.sendText(chatID, response)
 	}
 
-	optionID, err := strconv.ParseInt(strings.TrimPrefix(callback.Data, prefix), 10, 64)
-	if err != nil {
-		return b.answerCallback(callback.ID, "Не смог прочитать размер")
+	if rawSubscriptionID, ok := strings.CutPrefix(callback.Data, deletePrefix); ok {
+		subscriptionID, err := strconv.ParseInt(rawSubscriptionID, 10, 64)
+		if err != nil {
+			return b.answerCallback(callback.ID, "Не смог прочитать подписку")
+		}
+
+		response, err := b.usecase.SelectSubscriptionForDelete(ctx, telegramUserID, subscriptionID)
+		if err != nil {
+			b.logger.Error(
+				"failed to select subscription for delete",
+				zap.Int64("telegram_user_id", telegramUserID),
+				zap.Int64("subscription_id", subscriptionID),
+				zap.Error(err),
+			)
+
+			return b.answerCallback(callback.ID, "Не смог выбрать подписку")
+		}
+
+		if err := b.answerCallback(callback.ID, "Удаляю подписку"); err != nil {
+			return err
+		}
+
+		return b.sendText(chatID, response)
 	}
 
-	response, err := b.usecase.SelectSize(ctx, telegramUserID, optionID)
-	if err != nil {
-		b.logger.Error(
-			"failed to select size",
-			zap.Int64("telegram_user_id", telegramUserID),
-			zap.Int64("option_id", optionID),
-			zap.Error(err),
-		)
-
-		return b.answerCallback(callback.ID, "Не смог выбрать размер")
-	}
-
-	if err := b.answerCallback(callback.ID, "Размер выбран"); err != nil {
-		return err
-	}
-
-	return b.sendText(chatID, response)
+	return b.answerCallback(callback.ID, "Неизвестное действие")
 }
 
 func (b *Bot) answerCallback(callbackID string, text string) error {

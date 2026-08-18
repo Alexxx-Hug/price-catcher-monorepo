@@ -25,6 +25,11 @@ type SizeChoiceResult struct {
 	Sizes []models.ProductSize
 }
 
+type DeleteSubscriptionResult struct {
+	Text          string
+	Subscriptions []models.Subscription
+}
+
 func NewBotUseCase(parser ProductParser, producer UserActionProducer, subscriptionProvider SubscriptionProvider) *BotUseCase {
 	return &BotUseCase{
 		parser:               parser,
@@ -75,7 +80,7 @@ func (u *BotUseCase) HandleProductURL(ctx context.Context, telegramUserID int64,
 		Sizes: sizes,
 	}
 
-	u.userStates[telegramUserID] = models.StateWaitingSizeChoice
+	u.userStates[telegramUserID] = models.StateWaitingSizeChoiceForAddSubscription
 
 	return &sizeChoiceResult, nil
 }
@@ -83,7 +88,7 @@ func (u *BotUseCase) HandleProductURL(ctx context.Context, telegramUserID int64,
 // when user choose the size service will return him a message: "принял в обработку"
 func (u *BotUseCase) SelectSize(ctx context.Context, telegramUserID int64, optionID int64) (string, error) {
 	state := u.userStates[telegramUserID]
-	if state != models.StateWaitingSizeChoice {
+	if state != models.StateWaitingSizeChoiceForAddSubscription {
 		return "", fmt.Errorf("unexpected user state")
 	}
 
@@ -153,4 +158,55 @@ func (u *BotUseCase) ListUserSubscription(ctx context.Context, telegramUserID in
 	}
 
 	return builder.String(), nil
+}
+
+func (u *BotUseCase) DeleteUserSubscription(ctx context.Context, telegramUserID int64) (*DeleteSubscriptionResult, error) {
+	subscriptions, err := u.subscriptionProvider.ListUserSubscriptions(ctx, telegramUserID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user subscriptions: %w", err)
+	}
+
+	if len(subscriptions) == 0 {
+		return &DeleteSubscriptionResult{
+			Text: "У тебя пока нет подписок",
+		}, nil
+	}
+
+	u.userStates[telegramUserID] = models.StateWaitingSubscriptionChoiceForDelete
+
+	return &DeleteSubscriptionResult{
+		Text:          "Выбери подписку для удаления:",
+		Subscriptions: subscriptions,
+	}, nil
+}
+
+func (u *BotUseCase) SelectSubscriptionForDelete(ctx context.Context, telegramUserID, subscriptionID int64) (string, error) {
+	state := u.userStates[telegramUserID]
+	if state != models.StateWaitingSubscriptionChoiceForDelete {
+		return "", fmt.Errorf("unexpected user state")
+	}
+
+	payload := events.DeleteSubscriptionPayload{
+		SubscriptionID: subscriptionID,
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal delete subscription payload: %w", err)
+	}
+
+	event := events.UserActionEvent{
+		ActionID:       uuid.NewString(),
+		TelegramUserID: telegramUserID,
+		Type:           events.UserActionDeleteSubscription,
+		Payload:        payloadBytes,
+		CreatedAt:      time.Now(),
+	}
+
+	if err := u.producer.SendUserAction(ctx, event); err != nil {
+		return "", fmt.Errorf("failed to send user action event: %w", err)
+	}
+
+	u.userStates[telegramUserID] = models.StateIdle
+	return "Принял, удаляю", nil
 }
