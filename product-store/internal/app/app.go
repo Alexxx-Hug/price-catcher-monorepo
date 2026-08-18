@@ -13,6 +13,7 @@ import (
 	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/providers"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/repository/postgres"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/scheduler"
+	grpcserver "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/server/grpc"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/server/http"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/usecase"
 
@@ -27,6 +28,7 @@ type App struct {
 	readinessChecker    *http.ReadinessChecker
 	productChecked      *consumeradapter.ProductCheckedConsumer
 	userAction          *consumeradapter.UserActionConsumer
+	grpcServer          *grpcserver.Server
 }
 
 func NewApp(ctx context.Context, cfg *config.Config, logger *zap.Logger) (*App, func(), error) {
@@ -45,6 +47,13 @@ func NewApp(ctx context.Context, cfg *config.Config, logger *zap.Logger) (*App, 
 	productRepo := postgres.NewProductRepository(pool)
 	productUseCase := usecase.NewProductUseCase(productRepo, subRepo, logger, kafkaProvider.PriceCheckTaskProducer, kafkaProvider.PriceChangedProducer)
 	subscriptionUseCase := usecase.NewSubcriptionUseCase(subRepo)
+	subscriptionHandler := grpcserver.NewSubscriptionHandler(subscriptionUseCase)
+	grpcServer := grpcserver.NewServer(
+		cfg.GRPC.Port,
+		subscriptionHandler,
+		logger,
+	)
+
 	userActionUseCase := usecase.NewUserActionUseCase(productUseCase, subscriptionUseCase, logger)
 	productCheckedConsumer := consumeradapter.NewProductCheckedConsumer(
 		cfg.Kafka.BrokerList(),
@@ -93,6 +102,7 @@ func NewApp(ctx context.Context, cfg *config.Config, logger *zap.Logger) (*App, 
 		readinessChecker:    readinessChecker,
 		productChecked:      productCheckedConsumer,
 		userAction:          userActionConsumer,
+		grpcServer:          grpcServer,
 	}, cleanup, nil
 }
 
@@ -124,6 +134,12 @@ func (a *App) Run(ctx context.Context) error {
 	go func() {
 		if err := a.userAction.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			a.logger.Error("user action consumer stopped", zap.Error(err))
+		}
+	}()
+
+	go func() {
+		if err := a.grpcServer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			a.logger.Error("grpc server stopped", zap.Error(err))
 		}
 	}()
 

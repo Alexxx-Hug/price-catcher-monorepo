@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package productstore;
+option go_package = "github.com/Alexxx-Hug/price-catcher-monorepo/gen/go/productstore;productstore";
+
+service SubscriptionService {
+    rpc ListUserSubscriptions(ListUserSubscriptionsRequest) returns (ListUserSubscriptionsResponse);
+}
+
+message ListUserSubscriptionsRequest {
+    int64 telegram_user_id = 1;
+}
+
+message ListUserSubscriptionsResponse {
+    repeated Subscription subscriptions = 1;
+}
+
+message Subscription {
+    int64 subscription_id = 1;
+    int64 product_id = 2;
+    int64 product_size_id = 3;
+    int64 nm_id = 4;
+    string product_name = 5;
+    string brand = 6;
+    string size_name = 7;
+    int64 price_minor = 8;
+    string url = 9;
+}

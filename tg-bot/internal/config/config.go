@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strings"
+	"time"
 
 	"github.com/ilyakaznacheev/cleanenv"
 )
@@ -14,6 +15,11 @@ type AppConfig struct {
 
 type TelegramConfig struct {
 	Token string `env:"TELEGRAM_BOT_TOKEN" env-required:"true"`
+}
+
+type ProductStoreGRPCConfig struct{
+	Address string `env:"PRODUCT_STORE_GRPC_ADDRESS" env-default:"localhost:50051"`
+	Timeout time.Duration `env:"PRODUCT_STORE_GRPC_TIMEOUT" env-default:"5s"`
 }
 
 type KafkaConfig struct {
@@ -39,6 +45,8 @@ type Config struct {
 	App      AppConfig
 	Telegram TelegramConfig
 	Kafka    KafkaConfig
+	ProductStoreGRPCConfig ProductStoreGRPCConfig
+
 }
 
 func MustLoad() *Config {

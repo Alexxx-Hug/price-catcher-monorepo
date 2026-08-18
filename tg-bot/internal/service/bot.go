@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/models"
@@ -12,11 +13,11 @@ import (
 )
 
 type BotUseCase struct {
-	parser   ProductParser
-	producer UserActionProducer
-
-	userStates map[int64]models.UserState
-	pending    map[int64]models.PendingSubscription
+	parser               ProductParser
+	producer             UserActionProducer
+	userStates           map[int64]models.UserState
+	pending              map[int64]models.PendingSubscription
+	subscriptionProvider SubscriptionProvider
 }
 
 type SizeChoiceResult struct {
@@ -24,12 +25,13 @@ type SizeChoiceResult struct {
 	Sizes []models.ProductSize
 }
 
-func NewBotUseCase(parser ProductParser, producer UserActionProducer) *BotUseCase {
+func NewBotUseCase(parser ProductParser, producer UserActionProducer, subscriptionProvider SubscriptionProvider) *BotUseCase {
 	return &BotUseCase{
-		parser:     parser,
-		producer:   producer,
-		userStates: make(map[int64]models.UserState),
-		pending:    make(map[int64]models.PendingSubscription),
+		parser:               parser,
+		producer:             producer,
+		userStates:           make(map[int64]models.UserState),
+		pending:              make(map[int64]models.PendingSubscription),
+		subscriptionProvider: subscriptionProvider,
 	}
 }
 
@@ -127,4 +129,28 @@ func (u *BotUseCase) SelectSize(ctx context.Context, telegramUserID int64, optio
 	u.userStates[telegramUserID] = models.StateIdle
 
 	return fmt.Sprintf("Принял, добавляю подписку на %s, размер: %s", pending.Product.Name, selectedSize.SizeName), nil
+}
+
+func (u *BotUseCase) ListUserSubscription(ctx context.Context, telegramUserID int64) (string, error) {
+	subscriptions, err := u.subscriptionProvider.ListUserSubscriptions(ctx, telegramUserID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get user subscriptions: %w", err)
+	}
+
+	if len(subscriptions) == 0 {
+		return "У тебя пока нет подписок", nil
+	}
+
+	var builder strings.Builder
+
+	builder.WriteString("Ваши подписки:\n")
+
+	for i, sub := range subscriptions {
+		builder.WriteString(fmt.Sprintf(
+			"\n%d. %s\nБренд: %s\nРазмер: %s\nСтоимость: %d\nURL: %s\n",
+			i+1, sub.ProductName, sub.Brand, sub.SizeName, sub.PriceMinor/100, sub.URL,
+		))
+	}
+
+	return builder.String(), nil
 }

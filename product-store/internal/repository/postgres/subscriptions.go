@@ -191,3 +191,48 @@ func (r *subscriptionRepository) ListSubscriptionsByProductSizeID(ctx context.Co
 
 	return subscriptions, nil
 }
+
+func (r *subscriptionRepository) ListUserSubscriptionItems(ctx context.Context, telegramUserID int64) ([]entity.UserSubscriptionItem, error) {
+	const query = `
+	SELECT s.id,p.id,ps.id,p.nm_id,p.name,p.brand,ps.name,ps.price_minor,p.url
+	FROM shop.subscriptions s
+	JOIN shop.product_sizes ps ON ps.id = s.product_size_id
+	JOIN shop.products p ON p.id = ps.product_id
+	WHERE s.telegram_user_id = $1
+	ORDER BY s.created_at DESC
+	`
+
+	rows, err := r.db.Query(ctx, query, telegramUserID)
+	if err != nil {
+		return nil, fmt.Errorf("query subscriptions: %w", err)
+	}
+
+	defer rows.Close()
+
+	listUserSubscriptionsWithProduct := make([]entity.UserSubscriptionItem, 0)
+
+	for rows.Next() {
+		var sub entity.UserSubscriptionItem
+		if err := rows.Scan(
+			&sub.SubscriptionID,
+			&sub.ProductID,
+			&sub.ProductSizeID,
+			&sub.NmID,
+			&sub.ProductName,
+			&sub.Brand,
+			&sub.SizeName,
+			&sub.PriceMinor,
+			&sub.URL,
+		); err != nil {
+			return nil, fmt.Errorf("scan subscription: %w", err)
+		}
+
+		listUserSubscriptionsWithProduct = append(listUserSubscriptionsWithProduct, sub)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate user subscriptions telegram_user_id=%d: %w", telegramUserID, err)
+	}
+
+	return listUserSubscriptionsWithProduct, nil
+}
