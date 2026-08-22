@@ -133,7 +133,7 @@ func (u *BotUseCase) SelectSize(ctx context.Context, telegramUserID int64, optio
 	delete(u.pending, telegramUserID)
 	u.userStates[telegramUserID] = models.StateIdle
 
-	return fmt.Sprintf("Принял, добавляю подписку на %s, размер: %s", pending.Product.Name, selectedSize.SizeName), nil
+	return fmt.Sprintf("Принял, добавляю подписку на \"%s\", размер: %s", pending.Product.Name, selectedSize.SizeName), nil
 }
 
 func (u *BotUseCase) ListUserSubscription(ctx context.Context, telegramUserID int64) (string, error) {

@@ -20,7 +20,7 @@ type App struct {
 }
 
 func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
-	productParser := &parser.FakeParser{}
+	productParser := parser.NewWildberriesParser()
 
 	monitorService := service.NewMonitorService(productParser)
 	monitorHandler := grpcserver.NewMonitorHandler(monitorService)

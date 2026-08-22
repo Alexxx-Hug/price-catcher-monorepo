@@ -51,6 +51,13 @@ func (c *UserActionConsumer) Run(ctx context.Context) error {
 			return fmt.Errorf("fetch user action message: %w", err)
 		}
 
+		c.logger.Info(
+			"user action message fetched",
+			zap.String("topic", c.topic),
+			zap.Int64("offset", message.Offset),
+			zap.String("key", string(message.Key)),
+		)
+
 		var event eventdto.UserActionEvent
 		if err := json.Unmarshal(message.Value, &event); err != nil {
 			c.logger.Error("failed to unmarshal user action event", zap.Error(err))
@@ -76,6 +83,13 @@ func (c *UserActionConsumer) Run(ctx context.Context) error {
 		if err := c.reader.CommitMessages(ctx, message); err != nil {
 			return fmt.Errorf("commit user action message: %w", err)
 		}
+
+		c.logger.Info(
+			"user action message processed",
+			zap.String("topic", c.topic),
+			zap.Int64("offset", message.Offset),
+			zap.String("key", string(message.Key)),
+		)
 	}
 }
 
