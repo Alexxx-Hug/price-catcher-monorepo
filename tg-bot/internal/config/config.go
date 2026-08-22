@@ -17,9 +17,14 @@ type TelegramConfig struct {
 	Token string `env:"TELEGRAM_BOT_TOKEN" env-required:"true"`
 }
 
-type ProductStoreGRPCConfig struct{
-	Address string `env:"PRODUCT_STORE_GRPC_ADDRESS" env-default:"localhost:50051"`
+type ProductStoreGRPCConfig struct {
+	Address string        `env:"PRODUCT_STORE_GRPC_ADDRESS" env-default:"localhost:50051"`
 	Timeout time.Duration `env:"PRODUCT_STORE_GRPC_TIMEOUT" env-default:"5s"`
+}
+
+type MonitorGRPCConfig struct {
+	Address string        `env:"MONITOR_GRPC_ADDRESS" env-default:"localhost:50052"`
+	Timeout time.Duration `env:"MONITOR_GRPC_TIMEOUT" env-default:"5s"`
 }
 
 type KafkaConfig struct {
@@ -42,11 +47,11 @@ func (c KafkaConfig) BrokerList() []string {
 }
 
 type Config struct {
-	App      AppConfig
-	Telegram TelegramConfig
-	Kafka    KafkaConfig
+	App                    AppConfig
+	Telegram               TelegramConfig
+	Kafka                  KafkaConfig
 	ProductStoreGRPCConfig ProductStoreGRPCConfig
-
+	MonitorGRPCConfig      MonitorGRPCConfig
 }
 
 func MustLoad() *Config {
