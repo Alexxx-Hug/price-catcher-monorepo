@@ -136,6 +136,15 @@ func (b *Bot) sendSizeChoice(chatID int64, result *service.SizeChoiceResult) err
 
 	for _, size := range result.Sizes {
 		buttonText := fmt.Sprintf("%s — %d руб.", size.SizeName, size.PriceMinor/100)
+
+		if size.PriceMinor == 0 {
+			buttonText = fmt.Sprintf("%s — цена недоступна", size.SizeName)
+		}
+
+		if size.Quantity == 0 {
+			buttonText = fmt.Sprintf("%s — нет в наличии", size.SizeName)
+		}
+
 		callbackData := fmt.Sprintf("size:%d", size.OptionID)
 
 		row := tgbotapi.NewInlineKeyboardRow(
