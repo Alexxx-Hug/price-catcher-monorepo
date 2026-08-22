@@ -6,7 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/adapters/parser"
+	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/adapters/monitor"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/adapters/productstore"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/adapters/telegram"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/config"
@@ -24,16 +24,16 @@ type App struct {
 	kafkaProvider        *providers.KafkaProvider
 	productStoreProvider *productstore.Client
 	productStoreConn     *grpc.ClientConn
+	monitorConn          *grpc.ClientConn
 }
 
 func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
-	productParser := &parser.ProductParser{}
 	kafkaProvider, err := providers.NewKafkaProvider(cfg.Kafka)
 	if err != nil {
 		return nil, fmt.Errorf("init kafka provider: %w", err)
 	}
 
-	conn, err := grpc.NewClient(
+	productStoreConn, err := grpc.NewClient(
 		cfg.ProductStoreGRPCConfig.Address,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
@@ -41,16 +41,33 @@ func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
 		return nil, fmt.Errorf("connect product-store grpc: %w", err)
 	}
 
+	monitorConn, err := grpc.NewClient(
+		cfg.MonitorGRPCConfig.Address,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+
+	if err != nil {
+		_ = productStoreConn.Close()
+		_ = kafkaProvider.Close()
+		return nil, fmt.Errorf("connect monitor grpc: %w", err)
+	}
+
 	productStoreClient := productstore.NewClient(
-		conn,
+		productStoreConn,
 		cfg.ProductStoreGRPCConfig.Timeout,
 	)
 
-	botUseCase := service.NewBotUseCase(productParser, kafkaProvider.UserActionProducer, productStoreClient)
+	monitorClient := monitor.NewClient(
+		monitorConn,
+		cfg.MonitorGRPCConfig.Timeout,
+	)
+
+	botUseCase := service.NewBotUseCase(monitorClient, kafkaProvider.UserActionProducer, productStoreClient)
 
 	bot, err := telegram.NewBot(cfg.Telegram.Token, botUseCase, logger)
 	if err != nil {
-		_ = conn.Close()
+		_ = monitorConn.Close()
+		_ = productStoreConn.Close()
 		_ = kafkaProvider.Close()
 		return nil, fmt.Errorf("create telegram bot: %w", err)
 	}
@@ -61,7 +78,8 @@ func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
 		bot:                  bot,
 		kafkaProvider:        kafkaProvider,
 		productStoreProvider: productStoreClient,
-		productStoreConn:     conn,
+		productStoreConn:     productStoreConn,
+		monitorConn:          monitorConn,
 	}, nil
 }
 
@@ -97,6 +115,12 @@ func Run() error {
 }
 
 func (a *App) Close() error {
+	if a.monitorConn != nil {
+		if err := a.monitorConn.Close(); err != nil {
+			return fmt.Errorf("close monitor grpc connection: %w", err)
+		}
+	}
+
 	if a.productStoreConn != nil {
 		if err := a.productStoreConn.Close(); err != nil {
 			return fmt.Errorf("close product-store grpc connection: %w", err)

@@ -1,42 +1,41 @@
 package config
 
 import (
-	"fmt"
+	"os"
 	"time"
 
 	"github.com/ilyakaznacheev/cleanenv"
 )
 
-type ProductStoreConfig struct {
-	BaseURL string    `yaml:"base_url" env:"PRODUCT_STORE_BASE_URL" env-required:"true"`
-	Timeout time.Time `yaml:"timeout" env:"PRODUCT_STORE_TIMEOUT" env-defult:"5s"`
+type AppConfig struct {
+	Name    string `env:"APP_NAME" env-default:"monitor"`
+	Version string `env:"APP_VERSION" env-default:"1.0.0"`
 }
 
-type KafkaConfig struct {
-	Brokers []string `yaml:"brokers" env:"KAFKA_BROKERS" env-required:"true"`
-	Topic   string   `yaml:"topic" env:"KAFKA_TOPIC" env-default:"price_updates"`
+type GRPCConfig struct {
+	Port    string        `env:"GRPC_PORT" env-default:"50052"`
+	Timeout time.Duration `env:"GRPC_TIMEOUT" env-default:"5s"`
 }
 
 type Config struct {
-	ProductStore ProductStoreConfig
-	Kafka        KafkaConfig
-	Env          string    `yaml:"env" env:"ENV" env-default:"local"`
-	ScanInterval time.Time `yaml:"scan_interval" env:"SCAN_INTERVAL" env-default:"10s"`
-	LogFormat    string    `yaml:"log_format" env:"LOG_FORMAT" env-default:"text"`
+	App  AppConfig
+	GRPC GRPCConfig
 }
 
-func (c *Config) MustLoad(configPath string) (*Config, error) {
-	var cfg Config
+func MustLoad() *Config {
+	cfg := &Config{}
 
-	if configPath != "" {
-		if err := cleanenv.ReadConfig(configPath, &cfg); err != nil {
-			return nil, fmt.Errorf("failed to read config file: %w", err)
+	if _, err := os.Stat(".env"); err == nil {
+		if err := cleanenv.ReadConfig(".env", cfg); err != nil {
+			panic("cannot read config from .env: " + err.Error())
 		}
-	} else {
-		if err := cleanenv.ReadEnv(&cfg); err != nil {
-			return nil, fmt.Errorf("failed to read env variables: %w", err)
-		}
+
+		return cfg
 	}
 
-	return &cfg, nil
+	if err := cleanenv.ReadEnv(cfg); err != nil {
+		panic("cannot read config: " + err.Error())
+	}
+
+	return cfg
 }

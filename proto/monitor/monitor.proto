@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package monitor;
+
+option go_package = "github.com/Alexxx-Hug/price-catcher-monorepo/gen/go/monitor;monitor";
+
+service MonitorService {
+  rpc ParseProduct(ParseProductRequest) returns (ParseProductResponse);
+}
+
+message ParseProductRequest {
+  string url = 1;
+}
+
+message ParseProductResponse {
+  int64 nm_id = 1;
+  string name = 2;
+  string brand = 3;
+  string url = 4;
+  int32 total_quantity = 5;
+  repeated ProductSize sizes = 6;
+}
+
+message ProductSize {
+  int64 option_id = 1;
+  string size_name = 2;
+  string orig_name = 3;
+  int64 price_minor = 4;
+  int32 quantity = 5;
+}
