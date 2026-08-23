@@ -2,29 +2,33 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/signal"
 	"syscall"
 
+	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/adapters/consumer"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/adapters/monitor"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/adapters/productstore"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/adapters/telegram"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/config"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/providers"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/service"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
 type App struct {
-	cfg                  *config.Config
-	logger               *zap.Logger
-	bot                  *telegram.Bot
-	kafkaProvider        *providers.KafkaProvider
-	productStoreProvider *productstore.Client
-	productStoreConn     *grpc.ClientConn
-	monitorConn          *grpc.ClientConn
+	cfg                         *config.Config
+	logger                      *zap.Logger
+	bot                         *telegram.Bot
+	kafkaProvider               *providers.KafkaProvider
+	productPriceChangedConsumer *consumer.PriceChangedConsumer
+	productStoreProvider        *productstore.Client
+	productStoreConn            *grpc.ClientConn
+	monitorConn                 *grpc.ClientConn
 }
 
 func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
@@ -38,6 +42,7 @@ func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
+		_ = kafkaProvider.Close()
 		return nil, fmt.Errorf("connect product-store grpc: %w", err)
 	}
 
@@ -62,24 +67,41 @@ func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
 		cfg.MonitorGRPCConfig.Timeout,
 	)
 
-	botUseCase := service.NewBotUseCase(monitorClient, kafkaProvider.UserActionProducer, productStoreClient)
-
-	bot, err := telegram.NewBot(cfg.Telegram.Token, botUseCase, logger)
+	telegramAPI, err := tgbotapi.NewBotAPI(cfg.Telegram.Token)
 	if err != nil {
 		_ = monitorConn.Close()
 		_ = productStoreConn.Close()
 		_ = kafkaProvider.Close()
-		return nil, fmt.Errorf("create telegram bot: %w", err)
+		return nil, fmt.Errorf("create telegram api: %w", err)
 	}
 
+	notifier := telegram.NewNotifier(telegramAPI)
+	botUseCase := service.NewBotUseCase(
+		monitorClient,
+		kafkaProvider.UserActionProducer,
+		productStoreClient,
+		notifier,
+	)
+
+	bot := telegram.NewBotWithAPI(telegramAPI, botUseCase, logger)
+
+	productPriceChangedConsumer := consumer.NewPriceChangedConsumer(
+		cfg.Kafka.ProductPriceChangedTopic,
+		cfg.Kafka.BrokerList(),
+		cfg.Kafka.GroupID,
+		botUseCase,
+		logger,
+	)
+
 	return &App{
-		cfg:                  cfg,
-		logger:               logger,
-		bot:                  bot,
-		kafkaProvider:        kafkaProvider,
-		productStoreProvider: productStoreClient,
-		productStoreConn:     productStoreConn,
-		monitorConn:          monitorConn,
+		cfg:                         cfg,
+		logger:                      logger,
+		bot:                         bot,
+		kafkaProvider:               kafkaProvider,
+		productPriceChangedConsumer: productPriceChangedConsumer,
+		productStoreProvider:        productStoreClient,
+		productStoreConn:            productStoreConn,
+		monitorConn:                 monitorConn,
 	}, nil
 }
 
@@ -89,6 +111,12 @@ func (a *App) Run(ctx context.Context) error {
 		zap.String("app", a.cfg.App.Name),
 		zap.String("version", a.cfg.App.Version),
 	)
+
+	go func() {
+		if err := a.productPriceChangedConsumer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			a.logger.Error("product price changed consumer stopped", zap.Error(err))
+		}
+	}()
 
 	return a.bot.Start(ctx)
 }
@@ -115,6 +143,12 @@ func Run() error {
 }
 
 func (a *App) Close() error {
+	if a.productPriceChangedConsumer != nil {
+		if err := a.productPriceChangedConsumer.Close(); err != nil {
+			return fmt.Errorf("close product price changed consumer: %w", err)
+		}
+	}
+
 	if a.monitorConn != nil {
 		if err := a.monitorConn.Close(); err != nil {
 			return fmt.Errorf("close monitor grpc connection: %w", err)

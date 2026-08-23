@@ -30,3 +30,18 @@ type AddSubscriptionPayload struct {
 type DeleteSubscriptionPayload struct {
 	SubscriptionID int64 `json:"subscription_id"`
 }
+
+type ProductPriceChangedEvent struct {
+	EventID        string    `json:"event_id"`
+	TelegramUserID int64     `json:"telegram_user_id"`
+	ProductID      int64     `json:"product_id"`
+	ProductName    string    `json:"product_name"`
+	ProductSizeID  int64     `json:"product_size_id"`
+	Brand          string    `json:"brand"`
+	Size           string    `json:"size"`
+	URL            string    `json:"url"`
+	OldPriceMinor  int       `json:"old_price_minor"`
+	NewPriceMinor  int       `json:"new_price_minor"`
+	DeltaMinor     int       `json:"delta_minor"`
+	ChangedAt      time.Time `json:"changed_at"`
+}
