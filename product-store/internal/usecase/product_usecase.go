@@ -208,6 +208,11 @@ func (u *productUseCase) PublishPriceCheckTasks(ctx context.Context, limit int) 
 }
 
 func (u *productUseCase) ProcessCheckedProduct(ctx context.Context, event eventdto.ProductCheckedEvent) error {
+	if event.Error != nil {
+		u.logger.Warn("product check returned error")
+		return nil
+	}
+
 	if event.ProductSizeID <= 0 {
 		return apperrors.ErrInvalidProductSizeID
 	}
