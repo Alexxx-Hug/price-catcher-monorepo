@@ -34,6 +34,18 @@ func NewBot(token string, usecase *service.BotUseCase, logger *zap.Logger) (*Bot
 	}, nil
 }
 
+func NewBotWithAPI(api *tgbotapi.BotAPI, usecase *service.BotUseCase, logger *zap.Logger) *Bot {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+
+	return &Bot{
+		api:     api,
+		usecase: usecase,
+		logger:  logger,
+	}
+}
+
 func (b *Bot) Start(ctx context.Context) error {
 	updateConfig := tgbotapi.NewUpdate(0)
 	updateConfig.Timeout = 60
@@ -129,6 +141,10 @@ func (b *Bot) sendText(chatID int64, text string) error {
 	}
 
 	return nil
+}
+
+func (b *Bot) SendMessage(ctx context.Context, telegramUserID int64, text string) error {
+	return b.sendText(telegramUserID, text)
 }
 
 func (b *Bot) sendSizeChoice(chatID int64, result *service.SizeChoiceResult) error {

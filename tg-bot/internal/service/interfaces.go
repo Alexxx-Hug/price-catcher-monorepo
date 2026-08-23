@@ -18,3 +18,7 @@ type UserActionProducer interface {
 type SubscriptionProvider interface {
 	ListUserSubscriptions(ctx context.Context, telegramUserID int64) ([]models.Subscription, error)
 }
+
+type NotificationSender interface {
+	SendMessage(ctx context.Context, telegramUserID int64, text string) error
+}

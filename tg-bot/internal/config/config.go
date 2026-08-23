@@ -28,8 +28,10 @@ type MonitorGRPCConfig struct {
 }
 
 type KafkaConfig struct {
-	Brokers          string `env:"KAFKA_BROKERS" env-default:"localhost:9092"`
-	UserActionsTopic string `env:"KAFKA_TOPIC_USER_ACTIONS" env-default:"user-actions"`
+	Brokers                  string `env:"KAFKA_BROKERS" env-default:"localhost:9092"`
+	GroupID                  string `env:"KAFKA_GROUP_ID" env-default:"tg-bot"`
+	UserActionsTopic         string `env:"KAFKA_TOPIC_USER_ACTIONS" env-default:"user-actions"`
+	ProductPriceChangedTopic string `env:"KAFKA_TOPIC_PRODUCT_PRICE_CHANGED" env-default:"product-price-changed"`
 }
 
 func (c KafkaConfig) BrokerList() []string {

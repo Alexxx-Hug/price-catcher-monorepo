@@ -18,6 +18,7 @@ type BotUseCase struct {
 	userStates           map[int64]models.UserState
 	pending              map[int64]models.PendingSubscription
 	subscriptionProvider SubscriptionProvider
+	notificationSender   NotificationSender
 }
 
 type SizeChoiceResult struct {
@@ -30,13 +31,14 @@ type DeleteSubscriptionResult struct {
 	Subscriptions []models.Subscription
 }
 
-func NewBotUseCase(parser ProductParser, producer UserActionProducer, subscriptionProvider SubscriptionProvider) *BotUseCase {
+func NewBotUseCase(parser ProductParser, producer UserActionProducer, subscriptionProvider SubscriptionProvider, notificationSender NotificationSender) *BotUseCase {
 	return &BotUseCase{
 		parser:               parser,
 		producer:             producer,
 		userStates:           make(map[int64]models.UserState),
 		pending:              make(map[int64]models.PendingSubscription),
 		subscriptionProvider: subscriptionProvider,
+		notificationSender:   notificationSender,
 	}
 }
 
@@ -209,4 +211,23 @@ func (u *BotUseCase) SelectSubscriptionForDelete(ctx context.Context, telegramUs
 
 	u.userStates[telegramUserID] = models.StateIdle
 	return "Принял, удаляю", nil
+}
+
+func (u *BotUseCase) ProcessProductPriceChanged(ctx context.Context, event events.ProductPriceChangedEvent) error {
+	text := fmt.Sprintf(
+		"Цена изменилась\n\n%s\nБренд: %s\nРазмер: %s\nБыло: %d руб.\nСтало: %d руб.\nРазница: %d руб.\n%s",
+		event.ProductName,
+		event.Brand,
+		event.Size,
+		event.OldPriceMinor/100,
+		event.NewPriceMinor/100,
+		event.DeltaMinor/100,
+		event.URL,
+	)
+
+	if err := u.notificationSender.SendMessage(ctx, event.TelegramUserID, text); err != nil {
+		return fmt.Errorf("send price changed notification: %w", err)
+	}
+
+	return nil
 }
