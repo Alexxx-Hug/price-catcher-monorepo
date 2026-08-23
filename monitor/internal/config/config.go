@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"time"
 
 	"github.com/ilyakaznacheev/cleanenv"
@@ -17,9 +18,31 @@ type GRPCConfig struct {
 	Timeout time.Duration `env:"GRPC_TIMEOUT" env-default:"5s"`
 }
 
+type KafkaConfig struct {
+	Brokers              string `env:"KAFKA_BROKERS" env-default:"localhost:9092"`
+	GroupID              string `env:"KAFKA_GROUP_ID" env-default:"monitor"`
+	TaskCheckPricesTopic string `env:"KAFKA_TOPIC_TASK_CHECK_PRICES" env-default:"task-check-prices"`
+	ProductCheckedTopic  string `env:"KAFKA_TOPIC_PRODUCT_CHECKED" env-default:"product-checked"`
+}
+
+func (c KafkaConfig) BrokerList() []string {
+	parts := strings.Split(c.Brokers, ",")
+	brokers := make([]string, 0, len(parts))
+
+	for _, broker := range parts {
+		broker = strings.TrimSpace(broker)
+		if broker != "" {
+			brokers = append(brokers, broker)
+		}
+	}
+
+	return brokers
+}
+
 type Config struct {
-	App  AppConfig
-	GRPC GRPCConfig
+	App   AppConfig
+	GRPC  GRPCConfig
+	Kafka KafkaConfig
 }
 
 func MustLoad() *Config {
