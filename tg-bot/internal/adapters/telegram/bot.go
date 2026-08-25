@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/metrics"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/service"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.uber.org/zap"
@@ -15,6 +16,7 @@ type Bot struct {
 	api     *tgbotapi.BotAPI
 	usecase *service.BotUseCase
 	logger  *zap.Logger
+	metrics *metrics.Metrics
 }
 
 func NewBot(token string, usecase *service.BotUseCase, logger *zap.Logger) (*Bot, error) {
@@ -34,7 +36,7 @@ func NewBot(token string, usecase *service.BotUseCase, logger *zap.Logger) (*Bot
 	}, nil
 }
 
-func NewBotWithAPI(api *tgbotapi.BotAPI, usecase *service.BotUseCase, logger *zap.Logger) *Bot {
+func NewBotWithAPI(api *tgbotapi.BotAPI, usecase *service.BotUseCase, logger *zap.Logger, appMetrics *metrics.Metrics) *Bot {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
@@ -43,6 +45,7 @@ func NewBotWithAPI(api *tgbotapi.BotAPI, usecase *service.BotUseCase, logger *za
 		api:     api,
 		usecase: usecase,
 		logger:  logger,
+		metrics: appMetrics,
 	}
 }
 
@@ -60,14 +63,20 @@ func (b *Bot) Start(ctx context.Context) error {
 			if update.Message != nil {
 				if err := b.handleMessage(ctx, update.Message); err != nil {
 					b.logger.Error("failed to handle telegram message", zap.Error(err))
+					b.metrics.IncTelegramUpdate("message", err)
+					continue
 				}
+				b.metrics.IncTelegramUpdate("message", nil)
 				continue
 			}
 
 			if update.CallbackQuery != nil {
 				if err := b.handleCallback(ctx, update.CallbackQuery); err != nil {
 					b.logger.Error("failed to handle telegram callback", zap.Error(err))
+					b.metrics.IncTelegramUpdate("callback", err)
+					continue
 				}
+				b.metrics.IncTelegramUpdate("callback", nil)
 				continue
 			}
 		}

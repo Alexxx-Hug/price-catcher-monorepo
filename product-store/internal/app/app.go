@@ -10,6 +10,7 @@ import (
 	consumeradapter "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/adapters/consumer"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/config"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/db"
+	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/metrics"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/providers"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/repository/postgres"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/scheduler"
@@ -17,6 +18,7 @@ import (
 	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/server/http"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/usecase"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 )
 
@@ -37,7 +39,12 @@ func NewApp(ctx context.Context, cfg *config.Config, logger *zap.Logger) (*App, 
 		return nil, nil, fmt.Errorf("connect to database: %w", err)
 	}
 
-	kafkaProvider, err := providers.NewKafkaProvider(cfg.Kafka)
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(prometheus.NewGoCollector(), prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
+	appMetrics := metrics.New(cfg.App.Name)
+	appMetrics.Register(registry)
+
+	kafkaProvider, err := providers.NewKafkaProvider(cfg.Kafka, appMetrics)
 	if err != nil {
 		pool.Close()
 		return nil, nil, fmt.Errorf("init kafka provider: %w", err)
@@ -62,6 +69,7 @@ func NewApp(ctx context.Context, cfg *config.Config, logger *zap.Logger) (*App, 
 		productUseCase,
 		kafkaProvider.DeadLetterProducer,
 		logger,
+		appMetrics,
 	)
 	userActionConsumer := consumeradapter.NewUserActionConsumer(
 		cfg.Kafka.BrokerList(),
@@ -69,6 +77,7 @@ func NewApp(ctx context.Context, cfg *config.Config, logger *zap.Logger) (*App, 
 		cfg.Kafka.GroupID,
 		userActionUseCase,
 		logger,
+		appMetrics,
 	)
 	priceCheckScheduler := scheduler.NewPriceCheckScheduler(
 		productUseCase,
@@ -84,7 +93,7 @@ func NewApp(ctx context.Context, cfg *config.Config, logger *zap.Logger) (*App, 
 		logger,
 	)
 
-	httpRouter := http.NewRouter(readinessChecker)
+	httpRouter := http.NewRouter(readinessChecker, registry)
 	httpServer := http.NewServer(cfg.HTTP.Port, httpRouter.GetEngine(), logger)
 
 	cleanup := func() {

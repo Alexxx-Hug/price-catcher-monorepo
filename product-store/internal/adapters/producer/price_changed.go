@@ -6,15 +6,18 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/metrics"
 	eventdto "github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/models/eventdto"
 	"github.com/segmentio/kafka-go"
 )
 
 type KafkaPriceChangedProducer struct {
-	writer *kafka.Writer
+	writer  *kafka.Writer
+	topic   string
+	metrics *metrics.Metrics
 }
 
-func NewKafkaPriceChangedProducer(brokers []string, topic string) *KafkaPriceChangedProducer {
+func NewKafkaPriceChangedProducer(brokers []string, topic string, appMetrics *metrics.Metrics) *KafkaPriceChangedProducer {
 	return &KafkaPriceChangedProducer{
 		writer: &kafka.Writer{
 			Addr:         kafka.TCP(brokers...),
@@ -22,6 +25,8 @@ func NewKafkaPriceChangedProducer(brokers []string, topic string) *KafkaPriceCha
 			Balancer:     &kafka.Hash{},
 			RequiredAcks: kafka.RequireAll,
 		},
+		topic:   topic,
+		metrics: appMetrics,
 	}
 }
 
@@ -32,11 +37,13 @@ func (p *KafkaPriceChangedProducer) SendProductPriceChanged(ctx context.Context,
 	}
 
 	key := strconv.FormatInt(event.TelegramUserID, 10)
-	if err := p.writer.WriteMessages(ctx, kafka.Message{
+	err = p.writer.WriteMessages(ctx, kafka.Message{
 		Key:   []byte(key),
 		Value: value,
 		Time:  event.ChangedAt,
-	}); err != nil {
+	})
+	p.metrics.IncProduced(p.topic, err)
+	if err != nil {
 		return fmt.Errorf("write product price changed event: %w", err)
 	}
 

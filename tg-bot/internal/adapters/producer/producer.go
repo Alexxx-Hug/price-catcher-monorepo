@@ -6,15 +6,18 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/metrics"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/models/events"
 	"github.com/segmentio/kafka-go"
 )
 
 type UserActionProducer struct {
-	writer *kafka.Writer
+	writer  *kafka.Writer
+	topic   string
+	metrics *metrics.Metrics
 }
 
-func NewUserActionProducer(topic string, brokers []string) *UserActionProducer {
+func NewUserActionProducer(topic string, brokers []string, appMetrics *metrics.Metrics) *UserActionProducer {
 	return &UserActionProducer{
 		writer: &kafka.Writer{
 			Addr:         kafka.TCP(brokers...),
@@ -22,6 +25,8 @@ func NewUserActionProducer(topic string, brokers []string) *UserActionProducer {
 			Balancer:     &kafka.Hash{},
 			RequiredAcks: kafka.RequireAll,
 		},
+		topic:   topic,
+		metrics: appMetrics,
 	}
 }
 
@@ -33,11 +38,13 @@ func (p *UserActionProducer) SendUserAction(ctx context.Context, event events.Us
 
 	key := strconv.FormatInt(event.TelegramUserID, 10)
 
-	if err := p.writer.WriteMessages(ctx, kafka.Message{
+	err = p.writer.WriteMessages(ctx, kafka.Message{
 		Key:   []byte(key),
 		Value: value,
 		Time:  event.CreatedAt,
-	}); err != nil {
+	})
+	p.metrics.IncProduced(p.topic, err)
+	if err != nil {
 		return fmt.Errorf("failed to send event: %w", err)
 	}
 

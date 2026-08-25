@@ -5,13 +5,14 @@ import (
 
 	"github.com/Alexxx-Hug/price-catcher-monorepo/monitor/internal/adapters/producer"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/monitor/internal/config"
+	"github.com/Alexxx-Hug/price-catcher-monorepo/monitor/internal/metrics"
 )
 
 type KafkaProvider struct {
 	ProductCheckedProducer *producer.ProductCheckedProducer
 }
 
-func NewKafkaProvider(cfg config.KafkaConfig) (*KafkaProvider, error) {
+func NewKafkaProvider(cfg config.KafkaConfig, appMetrics *metrics.Metrics) (*KafkaProvider, error) {
 	if len(cfg.BrokerList()) == 0 {
 		return nil, fmt.Errorf("kafka brokers are not configured")
 	}
@@ -24,6 +25,7 @@ func NewKafkaProvider(cfg config.KafkaConfig) (*KafkaProvider, error) {
 		ProductCheckedProducer: producer.NewProductCheckedProducer(
 			cfg.ProductCheckedTopic,
 			cfg.BrokerList(),
+			appMetrics,
 		),
 	}, nil
 }

@@ -18,6 +18,10 @@ type GRPCConfig struct {
 	Timeout time.Duration `env:"GRPC_TIMEOUT" env-default:"5s"`
 }
 
+type MetricsConfig struct {
+	Port string `env:"METRICS_PORT" env-default:"9102"`
+}
+
 type KafkaConfig struct {
 	Brokers              string `env:"KAFKA_BROKERS" env-default:"localhost:9092"`
 	GroupID              string `env:"KAFKA_GROUP_ID" env-default:"monitor"`
@@ -40,9 +44,10 @@ func (c KafkaConfig) BrokerList() []string {
 }
 
 type Config struct {
-	App   AppConfig
-	GRPC  GRPCConfig
-	Kafka KafkaConfig
+	App     AppConfig
+	GRPC    GRPCConfig
+	Metrics MetricsConfig
+	Kafka   KafkaConfig
 }
 
 func MustLoad() *Config {

@@ -49,6 +49,16 @@ services:
     depends_on:
       - kafka
 
+  prometheus:
+    image: prom/prometheus:v3.6.0
+    container_name: price-catcher-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
 volumes:
   pgdata:
   kafka_data:

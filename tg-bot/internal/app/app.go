@@ -12,9 +12,11 @@ import (
 	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/adapters/productstore"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/adapters/telegram"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/config"
+	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/metrics"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/providers"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/service"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -29,10 +31,13 @@ type App struct {
 	productStoreProvider        *productstore.Client
 	productStoreConn            *grpc.ClientConn
 	monitorConn                 *grpc.ClientConn
+	metricsRegistry             *prometheus.Registry
 }
 
 func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
-	kafkaProvider, err := providers.NewKafkaProvider(cfg.Kafka)
+	appMetrics, metricsRegistry := metrics.New(cfg.App.Name)
+
+	kafkaProvider, err := providers.NewKafkaProvider(cfg.Kafka, appMetrics)
 	if err != nil {
 		return nil, fmt.Errorf("init kafka provider: %w", err)
 	}
@@ -83,7 +88,7 @@ func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
 		notifier,
 	)
 
-	bot := telegram.NewBotWithAPI(telegramAPI, botUseCase, logger)
+	bot := telegram.NewBotWithAPI(telegramAPI, botUseCase, logger, appMetrics)
 
 	productPriceChangedConsumer := consumer.NewPriceChangedConsumer(
 		cfg.Kafka.ProductPriceChangedTopic,
@@ -91,6 +96,7 @@ func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
 		cfg.Kafka.GroupID,
 		botUseCase,
 		logger,
+		appMetrics,
 	)
 
 	return &App{
@@ -102,6 +108,7 @@ func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
 		productStoreProvider:        productStoreClient,
 		productStoreConn:            productStoreConn,
 		monitorConn:                 monitorConn,
+		metricsRegistry:             metricsRegistry,
 	}, nil
 }
 
@@ -115,6 +122,12 @@ func (a *App) Run(ctx context.Context) error {
 	go func() {
 		if err := a.productPriceChangedConsumer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			a.logger.Error("product price changed consumer stopped", zap.Error(err))
+		}
+	}()
+
+	go func() {
+		if err := metrics.RunServer(ctx, a.cfg.Metrics.Port, a.metricsRegistry, a.logger); err != nil && !errors.Is(err, context.Canceled) {
+			a.logger.Error("metrics server stopped", zap.Error(err))
 		}
 	}()
 

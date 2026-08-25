@@ -10,9 +10,11 @@ import (
 	"github.com/Alexxx-Hug/price-catcher-monorepo/monitor/internal/adapters/consumer"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/monitor/internal/adapters/parser"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/monitor/internal/config"
+	"github.com/Alexxx-Hug/price-catcher-monorepo/monitor/internal/metrics"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/monitor/internal/providers"
 	grpcserver "github.com/Alexxx-Hug/price-catcher-monorepo/monitor/internal/server/grpc"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/monitor/internal/service"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 )
 
@@ -22,12 +24,14 @@ type App struct {
 	grpcServer         *grpcserver.Server
 	priceCheckConsumer *consumer.PriceCheckConsumer
 	kafkaProvider      *providers.KafkaProvider
+	metricsRegistry    *prometheus.Registry
 }
 
 func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
 	productParser := parser.NewWildberriesParser()
+	appMetrics, metricsRegistry := metrics.New(cfg.App.Name)
 
-	kafkaProvider, err := providers.NewKafkaProvider(cfg.Kafka)
+	kafkaProvider, err := providers.NewKafkaProvider(cfg.Kafka, appMetrics)
 	if err != nil {
 		return nil, fmt.Errorf("init kafka provider: %w", err)
 	}
@@ -41,6 +45,7 @@ func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
 		cfg.Kafka.GroupID,
 		monitorService,
 		logger,
+		appMetrics,
 	)
 
 	server := grpcserver.NewServer(cfg.GRPC.Port, monitorHandler, logger)
@@ -51,6 +56,7 @@ func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
 		grpcServer:         server,
 		kafkaProvider:      kafkaProvider,
 		priceCheckConsumer: priceCheckConsumer,
+		metricsRegistry:    metricsRegistry,
 	}, nil
 }
 
@@ -64,6 +70,12 @@ func (a *App) Run(ctx context.Context) error {
 	go func() {
 		if err := a.priceCheckConsumer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			a.logger.Error("price check consumer stopped", zap.Error(err))
+		}
+	}()
+
+	go func() {
+		if err := metrics.RunServer(ctx, a.cfg.Metrics.Port, a.metricsRegistry, a.logger); err != nil && !errors.Is(err, context.Canceled) {
+			a.logger.Error("metrics server stopped", zap.Error(err))
 		}
 	}()
 
