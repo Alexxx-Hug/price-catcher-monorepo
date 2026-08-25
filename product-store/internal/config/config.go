@@ -21,7 +21,7 @@ type HTTPConfig struct {
 }
 
 type GRPCConfig struct {
-	Port    string `env:"GRPC_PORT" env-default:"50051"`
+	Port    string        `env:"GRPC_PORT" env-default:"50051"`
 	Timeout time.Duration `env:"GRPC_TIMEOUT" env-default:"5s"`
 }
 

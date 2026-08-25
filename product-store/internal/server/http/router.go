@@ -4,13 +4,15 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type Router struct {
 	engine *gin.Engine
 }
 
-func NewRouter(readiness *ReadinessChecker) *Router {
+func NewRouter(readiness *ReadinessChecker, registry *prometheus.Registry) *Router {
 	gin.SetMode(gin.ReleaseMode)
 
 	engine := gin.New()
@@ -44,6 +46,10 @@ func NewRouter(readiness *ReadinessChecker) *Router {
 			"status": "ready",
 		})
 	})
+
+	if registry != nil {
+		engine.GET("/metrics", gin.WrapH(promhttp.HandlerFor(registry, promhttp.HandlerOpts{})))
+	}
 
 	return &Router{engine: engine}
 }

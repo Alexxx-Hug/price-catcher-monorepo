@@ -5,13 +5,14 @@ import (
 
 	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/adapters/producer"
 	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/config"
+	"github.com/Alexxx-Hug/price-catcher-monorepo/tg-bot/internal/metrics"
 )
 
 type KafkaProvider struct {
 	UserActionProducer *producer.UserActionProducer
 }
 
-func NewKafkaProvider(cfg config.KafkaConfig) (*KafkaProvider, error) {
+func NewKafkaProvider(cfg config.KafkaConfig, appMetrics *metrics.Metrics) (*KafkaProvider, error) {
 	if len(cfg.BrokerList()) == 0 {
 		return nil, fmt.Errorf("kafka brokers are not configured")
 	}
@@ -24,6 +25,7 @@ func NewKafkaProvider(cfg config.KafkaConfig) (*KafkaProvider, error) {
 		UserActionProducer: producer.NewUserActionProducer(
 			cfg.UserActionsTopic,
 			cfg.BrokerList(),
+			appMetrics,
 		),
 	}, nil
 }

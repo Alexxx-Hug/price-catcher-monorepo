@@ -7,11 +7,14 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Alexxx-Hug/price-catcher-monorepo/product-store/internal/metrics"
 	"github.com/segmentio/kafka-go"
 )
 
 type KafkaDeadLetterProducer struct {
-	writer *kafka.Writer
+	writer  *kafka.Writer
+	topic   string
+	metrics *metrics.Metrics
 }
 
 type deadLetterMessage struct {
@@ -24,7 +27,7 @@ type deadLetterMessage struct {
 	OccurredAt  time.Time `json:"occurred_at"`
 }
 
-func NewKafkaDeadLetterProducer(brokers []string, topic string) *KafkaDeadLetterProducer {
+func NewKafkaDeadLetterProducer(brokers []string, topic string, appMetrics *metrics.Metrics) *KafkaDeadLetterProducer {
 	return &KafkaDeadLetterProducer{
 		writer: &kafka.Writer{
 			Addr:         kafka.TCP(brokers...),
@@ -32,6 +35,8 @@ func NewKafkaDeadLetterProducer(brokers []string, topic string) *KafkaDeadLetter
 			Balancer:     &kafka.Hash{},
 			RequiredAcks: kafka.RequireAll,
 		},
+		topic:   topic,
+		metrics: appMetrics,
 	}
 }
 
@@ -64,6 +69,7 @@ func (p *KafkaDeadLetterProducer) SendDeadLetter(
 		Value: payload,
 		Time:  message.OccurredAt,
 	})
+	p.metrics.IncProduced(p.topic, err)
 	if err != nil {
 		return fmt.Errorf("write dead letter message: %w", err)
 	}

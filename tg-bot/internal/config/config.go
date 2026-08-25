@@ -27,6 +27,10 @@ type MonitorGRPCConfig struct {
 	Timeout time.Duration `env:"MONITOR_GRPC_TIMEOUT" env-default:"5s"`
 }
 
+type MetricsConfig struct {
+	Port string `env:"METRICS_PORT" env-default:"9103"`
+}
+
 type KafkaConfig struct {
 	Brokers                  string `env:"KAFKA_BROKERS" env-default:"localhost:9092"`
 	GroupID                  string `env:"KAFKA_GROUP_ID" env-default:"tg-bot"`
@@ -52,6 +56,7 @@ type Config struct {
 	App                    AppConfig
 	Telegram               TelegramConfig
 	Kafka                  KafkaConfig
+	Metrics                MetricsConfig
 	ProductStoreGRPCConfig ProductStoreGRPCConfig
 	MonitorGRPCConfig      MonitorGRPCConfig
 }

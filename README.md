@@ -17,6 +17,7 @@ Price Catcher — учебный микросервисный проект дл�
 - PostgreSQL
 - Kafka
 - Kafka UI
+- Prometheus
 
 ## Архитектура
 
@@ -56,7 +57,7 @@ flowchart LR
 1. Запусти инфраструктуру:
 
 ```bash
-docker compose up -d postgres kafka kafka-ui
+docker compose up -d postgres kafka kafka-ui prometheus
 ```
 
 2. Создай локальные env-файлы:
@@ -117,10 +118,13 @@ go run ./cmd
 ## Порты
 
 - `product-store`: `8080` HTTP health/readiness, `50051` gRPC.
-- `monitor`: `50052` gRPC.
+- `product-store` metrics: `http://localhost:8080/metrics`.
+- `monitor`: `50052` gRPC, `9102` metrics.
+- `tg-bot`: `9103` metrics.
 - `postgres`: `5433` на хосте, `5432` внутри контейнера.
 - `kafka`: `9092` на хосте.
 - `kafka-ui`: `8081`.
+- `prometheus`: `9090`.
 
 ## Конфигурация
 

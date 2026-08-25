@@ -6,15 +6,18 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/Alexxx-Hug/price-catcher-monorepo/monitor/internal/metrics"
 	eventdto "github.com/Alexxx-Hug/price-catcher-monorepo/monitor/internal/models/eventDTO"
 	"github.com/segmentio/kafka-go"
 )
 
 type ProductCheckedProducer struct {
-	writer *kafka.Writer
+	writer  *kafka.Writer
+	topic   string
+	metrics *metrics.Metrics
 }
 
-func NewProductCheckedProducer(topic string, brokers []string) *ProductCheckedProducer {
+func NewProductCheckedProducer(topic string, brokers []string, appMetrics *metrics.Metrics) *ProductCheckedProducer {
 	return &ProductCheckedProducer{
 		writer: &kafka.Writer{
 			Addr:         kafka.TCP(brokers...),
@@ -22,6 +25,8 @@ func NewProductCheckedProducer(topic string, brokers []string) *ProductCheckedPr
 			RequiredAcks: kafka.RequireAll,
 			Balancer:     &kafka.Hash{},
 		},
+		topic:   topic,
+		metrics: appMetrics,
 	}
 }
 
@@ -32,11 +37,13 @@ func (p *ProductCheckedProducer) SendProductChecked(ctx context.Context, event e
 	}
 
 	key := strconv.FormatInt(event.ProductSizeID, 10)
-	if err := p.writer.WriteMessages(ctx, kafka.Message{
+	err = p.writer.WriteMessages(ctx, kafka.Message{
 		Key:   []byte(key),
 		Value: value,
 		Time:  event.CheckedAt,
-	}); err != nil {
+	})
+	p.metrics.IncProduced(p.topic, err)
+	if err != nil {
 		return fmt.Errorf("write product checked event: %w", err)
 	}
 
