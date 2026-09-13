@@ -101,6 +101,11 @@ func (b *Bot) handleMessage(ctx context.Context, message *tgbotapi.Message) erro
 	case "Мои подписки":
 		response, err := b.usecase.ListUserSubscription(ctx, telegramUserID)
 		if err != nil {
+			b.logger.Error(
+				"failed to list user subscriptions",
+				zap.Int64("telegram_user_id", telegramUserID),
+				zap.Error(err),
+			)
 			return b.sendText(chatID, "Не смог получить список подписок")
 		}
 		return b.sendText(chatID, response)

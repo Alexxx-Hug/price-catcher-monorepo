@@ -1,9 +1,6 @@
--- +goose Up
--- +goose StatementBegin
-
 CREATE SCHEMA IF NOT EXISTS shop;
 
-CREATE TABLE shop.products (
+CREATE TABLE IF NOT EXISTS shop.products (
     id BIGSERIAL PRIMARY KEY,
     nm_id BIGINT UNIQUE NOT NULL,
     name VARCHAR(128) NOT NULL,
@@ -12,12 +9,3 @@ CREATE TABLE shop.products (
     total_quantity INT NOT NULL DEFAULT 0,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL
 );
-
--- +goose StatementEnd
-
--- +goose Down
--- +goose StatementBegin
-
-DROP TABLE IF EXISTS shop.products;
-
--- +goose StatementEnd
