@@ -26,7 +26,7 @@ type GRPCConfig struct {
 }
 
 type DBConfig struct {
-	Port         string `env:"DB_PORT" env-default:"5432"`
+	Port         string `env:"DB_PORT" env-required:"true"`
 	Host         string `env:"DB_HOST" env-required:"true"`
 	User         string `env:"DB_USER" env-required:"true"`
 	Password     string `env:"DB_PASSWORD" env-required:"true"`

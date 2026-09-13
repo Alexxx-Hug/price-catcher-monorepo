@@ -74,28 +74,28 @@ cp tg-bot/.env.example tg-bot/.env
 TELEGRAM_BOT_TOKEN=your_bot_token
 ```
 
-3. Примени миграции PostgreSQL:
+3. Примени миграции PostgreSQL через Docker:
 
 ```bash
-docker exec -i pricepulse_db psql -U pricepulse_user -d shop < product-store/internal/migrations/001_create_products_table.sql
-docker exec -i pricepulse_db psql -U pricepulse_user -d shop < product-store/internal/migrations/002_create_products_size_table.sql
-docker exec -i pricepulse_db psql -U pricepulse_user -d shop < product-store/internal/migrations/003_create_user_subscription.sql
+docker compose run --rm migrate
 ```
+
+Миграции выполняются отдельным compose-сервисом `migrate`. Он дождется healthy-состояния Postgres и применит все новые `*.up.sql` из `product-store/internal/migrations`.
 
 4. Создай Kafka topics:
 
 ```bash
-docker exec -it price-catcher-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic user-actions --partitions 1 --replication-factor 1
-docker exec -it price-catcher-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic task-check-prices --partitions 1 --replication-factor 1
-docker exec -it price-catcher-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic product-checked --partitions 1 --replication-factor 1
-docker exec -it price-catcher-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic product-checked.dlq --partitions 1 --replication-factor 1
-docker exec -it price-catcher-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic product-price-changed --partitions 1 --replication-factor 1
+docker compose exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic user-actions --partitions 1 --replication-factor 1
+docker compose exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic task-check-prices --partitions 1 --replication-factor 1
+docker compose exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic product-checked --partitions 1 --replication-factor 1
+docker compose exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic product-checked.dlq --partitions 1 --replication-factor 1
+docker compose exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic product-price-changed --partitions 1 --replication-factor 1
 ```
 
 Проверить список топиков:
 
 ```bash
-docker exec -it price-catcher-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
+docker compose exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
 ```
 
 5. Запусти сервисы в отдельных терминалах:
@@ -138,10 +138,33 @@ go run ./cmd
 
 ## Миграции
 
-SQL-миграции лежат в:
+Миграции запускаются через Docker-сервис `migrate` из `docker-compose.yaml`. Вручную заходить в контейнер Postgres и выполнять `psql` больше не нужно.
+
+Применить все новые миграции:
+
+```bash
+docker compose run --rm migrate
+```
+
+Откатить одну последнюю миграцию:
+
+```bash
+docker compose run --rm migrate -path=/migrations -database="postgres://pricepulse_user:shop_password@postgres:5432/shop?sslmode=disable" down 1
+```
+
+Файлы миграций лежат в:
 
 ```text
 product-store/internal/migrations/
+```
+
+Формат файлов соответствует `golang-migrate`:
+
+```text
+000001_create_products_table.up.sql
+000001_create_products_table.down.sql
+000002_create_products_size_table.up.sql
+000002_create_products_size_table.down.sql
 ```
 
 Сейчас используются таблицы:
@@ -165,7 +188,7 @@ gen/go/
 
 ## Структура репозитория
 
-- `docker-compose.yaml`: локальная инфраструктура.
+- `docker-compose.yaml`: локальная инфраструктура, Prometheus и сервис `migrate` для PostgreSQL-миграций.
 - `product-store/`: хранение товаров, размеров и подписок.
 - `monitor/`: парсинг Wildberries и обработка задач проверки.
 - `tg-bot/`: Telegram UI и уведомления.
